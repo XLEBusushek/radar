@@ -6,9 +6,9 @@
 setupRadarPaths();
 
 %% Пользовательские параметры
-if ~exist('numFalse', 'var'), numFalse = 5; end
-if ~exist('numGround', 'var'), numGround = 5; end
-if ~exist('numAir', 'var'), numAir = 6; end
+if ~exist('numFalse', 'var'), numFalse = 1; end
+if ~exist('numGround', 'var'), numGround = 1; end
+if ~exist('numAir', 'var'), numAir = 2; end
 if ~exist('boxSize', 'var'), boxSize = [1000, 1000, 300]; end
 if ~exist('outputPeriod', 'var'), outputPeriod = 5; end
 if ~exist('duration', 'var'), duration = 300; end

@@ -15,7 +15,7 @@ function TestMotionLogic()
 
     errors = 0;
     errors = errors + validateKinematicsExport(result);
-    errors = errors + validateTypeBehavior(metricsByType);
+    errors = errors + validateTypeBehavior(metricsByType, result.Config.Dt);
 
     printMetricsReport(result, metricsByType);
 
@@ -79,7 +79,7 @@ function errors = validateKinematicsExport(result)
     end
 end
 
-function errors = validateTypeBehavior(metricsByType)
+function errors = validateTypeBehavior(metricsByType, dt)
     errors = 0;
 
     birdMetrics = metricsByType.False;
@@ -91,7 +91,7 @@ function errors = validateTypeBehavior(metricsByType)
     errors = errors + validateGroundMetrics(groundMetrics);
     errors = errors + validateAirplaneMetrics(airplaneMetrics, birdMetrics);
     errors = errors + validateQuadcopterMetrics(quadMetrics, airplaneMetrics);
-    errors = errors + validateMotionSmoothness(metricsByType);
+    errors = errors + validateMotionSmoothness(metricsByType, dt);
 end
 
 function errors = validateBirdMetrics(metrics)
@@ -217,18 +217,21 @@ function errors = assertTrue(condition, message)
     end
 end
 
-function errors = validateMotionSmoothness(metricsByType)
+function errors = validateMotionSmoothness(metricsByType, dt)
     errors = 0;
     typeNames = fieldnames(metricsByType);
 
     for k = 1:numel(typeNames)
         metrics = metricsByType.(typeNames{k});
-        profile = TargetProfileRegistry.getProfile(metrics(1).Type);
-        maxAllowedSpeedStep = profile.MaxAcceleration * 1.05 + 0.5;
 
         for metricIdx = 1:numel(metrics)
             m = metrics(metricIdx);
-            errors = errors + assertTrue(m.MaxSpeedStep <= maxAllowedSpeedStep, ...
+            profile = TargetProfileRegistry.getProfile(m.Type);
+            maxAllowedUp = profile.MaxAcceleration * dt * 1.05 + 0.5;
+            maxAllowedDown = profile.MaxDeceleration * dt * 1.05 + 0.5;
+            maxAllowedStep = max(maxAllowedUp, maxAllowedDown);
+
+            errors = errors + assertTrue(m.MaxSpeedStep <= maxAllowedStep, ...
                 sprintf('Target %d speed jumps exceed acceleration limits.', m.ID));
             errors = errors + assertTrue(m.MaxAltitudeStep < 15, ...
                 sprintf('Target %d altitude changes in large steps.', m.ID));

@@ -43,7 +43,9 @@ classdef TargetProfileRegistry
             profile.AltitudeMax = 40;
             profile.MaxTurnRate = 20;
             profile.MaxPitchRate = 10;
-            profile.MaxAcceleration = 2;
+            profile.MaxAcceleration = 2.0;
+            profile.MaxDeceleration = 2.5;
+            profile.SpeedResponseTime = 3;
             profile.CanHover = false;
             profile.CanClimb = true;
             profile.CanDescend = true;
@@ -59,7 +61,9 @@ classdef TargetProfileRegistry
             profile.AltitudeMax = 30;
             profile.MaxTurnRate = 5;
             profile.MaxPitchRate = 3;
-            profile.MaxAcceleration = 3;
+            profile.MaxAcceleration = 0.8;
+            profile.MaxDeceleration = 1.2;
+            profile.SpeedResponseTime = 6;
             profile.CanHover = false;
             profile.CanClimb = false;
             profile.CanDescend = false;
@@ -75,7 +79,9 @@ classdef TargetProfileRegistry
             profile.AltitudeMax = 5000;
             profile.MaxTurnRate = 3;
             profile.MaxPitchRate = 2;
-            profile.MaxAcceleration = 1;
+            profile.MaxAcceleration = 0.4;
+            profile.MaxDeceleration = 0.6;
+            profile.SpeedResponseTime = 10;
             profile.CanHover = false;
             profile.CanClimb = true;
             profile.CanDescend = true;
@@ -91,7 +97,9 @@ classdef TargetProfileRegistry
             profile.AltitudeMax = 500;
             profile.MaxTurnRate = 25;
             profile.MaxPitchRate = 15;
-            profile.MaxAcceleration = 4;
+            profile.MaxAcceleration = 3.0;
+            profile.MaxDeceleration = 4.0;
+            profile.SpeedResponseTime = 2;
             profile.HoverSpeedMin = 0;
             profile.CruiseSpeedMin = 5;
             profile.CanHover = true;

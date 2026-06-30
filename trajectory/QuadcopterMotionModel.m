@@ -10,9 +10,9 @@ classdef QuadcopterMotionModel < MotionModelBase
             target = QuadcopterMotionModel.ensureContext(target);
             target = MotionStateExecutor.applyState(target, decision.NextState, profile, dt);
             target.Speed = speedAtStart;
-            target = MotionBehaviorGuidance.apply(target, behaviorCommand, profile, environment, dt);
             target = QuadcopterMotionModel.applyDesiredDynamics( ...
                 target, decision.NextState, behaviorCommand, profile, dt);
+            target = MotionBehaviorGuidance.apply(target, behaviorCommand, profile, environment, dt);
 
             maxTurnStep = deg2rad(profile.MaxTurnRate) * dt;
             maxPitchStep = deg2rad(profile.MaxPitchRate) * dt;
@@ -37,15 +37,20 @@ classdef QuadcopterMotionModel < MotionModelBase
         function target = ensureContext(target)
             if ~isfield(target.MotionContext, 'DesiredSpeed')
                 target.MotionContext.DesiredSpeed = target.Speed;
+                target.MotionContext.SmoothedDesiredSpeed = target.Speed;
             end
         end
 
         function target = applyDesiredDynamics(target, behaviorState, behaviorCommand, profile, dt)
-            maxAccel = profile.MaxAcceleration * dt;
             context = target.MotionContext;
+            maxAccelStep = profile.MaxAcceleration * dt;
+            maxDecelStep = profile.MaxDeceleration * dt;
 
             if BehaviorCommand.isActive(behaviorCommand) && isfinite(behaviorCommand.DesiredSpeed)
-                context.DesiredSpeed = behaviorCommand.DesiredSpeed;
+                if ~isfield(context, 'CommandDesiredSpeed') || ...
+                        context.CommandDesiredSpeed ~= behaviorCommand.DesiredSpeed
+                    context.CommandDesiredSpeed = behaviorCommand.DesiredSpeed;
+                end
             end
 
             switch behaviorState
@@ -54,17 +59,21 @@ classdef QuadcopterMotionModel < MotionModelBase
                     target.Pitch = MotionKinematics.rotateToward( ...
                         target.Pitch, 0, deg2rad(profile.MaxPitchRate) * dt);
                 case TargetBehaviorState.SpeedUp
-                    context.DesiredSpeed = min(profile.SpeedMax, context.DesiredSpeed + maxAccel);
+                    context.DesiredSpeed = min(profile.SpeedMax, context.DesiredSpeed + maxAccelStep);
                 case TargetBehaviorState.SlowDown
-                    context.DesiredSpeed = max(profile.CruiseSpeedMin, context.DesiredSpeed - maxAccel);
+                    context.DesiredSpeed = max(profile.CruiseSpeedMin, context.DesiredSpeed - maxDecelStep);
                 case TargetBehaviorState.Climb
-                    context.DesiredSpeed = min(profile.SpeedMax, context.DesiredSpeed + 0.5 * maxAccel);
+                    context.DesiredSpeed = min(profile.SpeedMax, context.DesiredSpeed + 0.5 * maxAccelStep);
                 case TargetBehaviorState.Descend
-                    context.DesiredSpeed = max(profile.CruiseSpeedMin, context.DesiredSpeed - 0.5 * maxAccel);
+                    context.DesiredSpeed = max(profile.CruiseSpeedMin, context.DesiredSpeed - 0.5 * maxDecelStep);
                 otherwise
-                    cruiseTarget = min(profile.SpeedMax, max(profile.CruiseSpeedMin, target.Speed));
-                    context.DesiredSpeed = MotionKinematics.moveToward( ...
-                        context.DesiredSpeed, cruiseTarget, maxAccel);
+                    if isfield(context, 'CommandDesiredSpeed')
+                        context.DesiredSpeed = context.CommandDesiredSpeed;
+                    else
+                        cruiseTarget = min(profile.SpeedMax, max(profile.CruiseSpeedMin, target.Speed));
+                        context.DesiredSpeed = MotionKinematics.moveToward( ...
+                            context.DesiredSpeed, cruiseTarget, maxAccelStep);
+                    end
             end
 
             if BehaviorCommand.isActive(behaviorCommand) && ...
@@ -72,7 +81,7 @@ classdef QuadcopterMotionModel < MotionModelBase
                 context.DesiredSpeed = min(1.0, max(profile.HoverSpeedMin, behaviorCommand.DesiredSpeed));
             end
 
-            target.Speed = MotionKinematics.moveToward(target.Speed, context.DesiredSpeed, maxAccel);
+            target.Speed = MotionKinematics.applySmoothSpeed(target.Speed, context.DesiredSpeed, profile, dt);
             target.MotionContext = context;
         end
     end

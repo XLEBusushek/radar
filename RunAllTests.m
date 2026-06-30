@@ -13,6 +13,8 @@ function RunAllTests()
         'TestSimulationEngine', false
         'TestRadarOutputExporter', false
         'TestMotionLogic', false
+        'TestSpeedSmoothness', false
+        'TestSmallScenarioVisualLogic', false
         'TestPhasedTargetAdapter', true
         'TestMainScenario', false
     };

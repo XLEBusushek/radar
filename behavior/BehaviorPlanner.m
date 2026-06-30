@@ -99,10 +99,42 @@ classdef BehaviorPlanner
                 roadHeading = target.MotionContext.RoadHeading;
             end
 
-            segmentLength = 80 + 120 * rand();
+            context = target.MotionContext;
+            if ~isfield(context, 'CruiseSpeed')
+                context.CruiseSpeed = 15 + 10 * rand();
+                context.ApproachSpeed = 6 + 6 * rand();
+                context.TurnSpeed = 5 + 5 * rand();
+            end
+
+            distRemaining = max(0, context.SegmentLength - context.DistanceOnRoad);
+            headingError = abs(MotionKinematics.wrapAngle(roadHeading - target.Heading));
+
+            if headingError > deg2rad(8)
+                mode = BehaviorMode.TurnAtIntersection;
+                desiredSpeed = context.TurnSpeed;
+                reason = 'Ground vehicle turning at intersection';
+                holdTime = 4 + 3 * rand();
+            elseif distRemaining < 35
+                mode = BehaviorMode.ApproachIntersection;
+                desiredSpeed = context.ApproachSpeed;
+                reason = 'Ground vehicle approaching intersection';
+                holdTime = 5 + 4 * rand();
+            elseif isfield(context, 'RoadPhase') && strcmp(context.RoadPhase, 'CruiseAfterTurn')
+                mode = BehaviorMode.CruiseAfterTurn;
+                desiredSpeed = context.CruiseSpeed;
+                reason = 'Ground vehicle accelerating after turn';
+                holdTime = 6 + 4 * rand();
+            else
+                mode = BehaviorMode.FollowRoad;
+                desiredSpeed = context.CruiseSpeed;
+                reason = 'Ground vehicle following road segment';
+                holdTime = 8 + 7 * rand();
+            end
+
+            segmentLength = max(distRemaining, 40);
             baseAltitude = target.Position(3);
-            if isfield(target.MotionContext, 'BaseAltitude')
-                baseAltitude = target.MotionContext.BaseAltitude;
+            if isfield(context, 'BaseAltitude')
+                baseAltitude = context.BaseAltitude;
             end
             roadAltitude = min(max(baseAltitude, altitudeLimits(1)), altitudeLimits(2));
 
@@ -111,36 +143,52 @@ classdef BehaviorPlanner
             waypoint(2) = min(max(waypoint(2), environment.YLimits(1)), environment.YLimits(2));
 
             command = BehaviorCommand.create( ...
-                'BehaviorMode', BehaviorMode.FollowRoad, ...
+                'BehaviorMode', mode, ...
                 'DesiredPosition', waypoint, ...
                 'DesiredHeading', roadHeading, ...
-                'DesiredSpeed', profile.SpeedMin + rand() * (profile.SpeedMax - profile.SpeedMin), ...
+                'DesiredSpeed', desiredSpeed, ...
                 'DesiredAltitude', roadAltitude, ...
-                'HoldTime', 5 + 5 * rand(), ...
+                'HoldTime', holdTime, ...
                 'Priority', 1, ...
-                'Reason', 'Ground vehicle following road segment');
+                'Reason', reason);
         end
 
         function command = planAirplane(target, environment)
             profile = TargetProfileRegistry.getProfile(target.Type);
             altitudeLimits = TargetFactory.resolveAltitudeLimits(profile, environment);
+            desiredSpeed = 14 + 4 * rand();
 
-            if rand() < 0.75
+            roll = rand();
+            if roll < 0.70
+                mode = BehaviorMode.LongCruise;
+                reason = 'Airplane UAV long cruise segment';
+                holdTime = 20 + 20 * rand();
+            elseif roll < 0.85
+                mode = BehaviorMode.WideTurn;
+                reason = 'Airplane UAV wide turn';
+                holdTime = 18 + 12 * rand();
+            elseif roll < 0.95
                 mode = BehaviorMode.Patrol;
-                reason = 'Airplane UAV long patrol segment';
-                holdTime = 15 + 10 * rand();
+                reason = 'Airplane UAV patrol segment';
+                holdTime = 20 + 15 * rand();
             else
-                mode = BehaviorMode.Cruise;
-                reason = 'Airplane UAV cruise segment';
-                holdTime = 12 + 8 * rand();
+                mode = BehaviorMode.AltitudeCorrection;
+                reason = 'Airplane UAV altitude correction';
+                holdTime = 25 + 15 * rand();
             end
 
-            segmentLength = 200 + 400 * rand();
-            heading = target.Heading + deg2rad(-20 + 40 * rand());
+            segmentLength = 250 + 350 * rand();
+            heading = target.Heading + deg2rad(-12 + 24 * rand());
             waypoint = target.Position;
             waypoint(1) = target.Position(1) + segmentLength * cos(heading);
             waypoint(2) = target.Position(2) + segmentLength * sin(heading);
-            desiredAltitude = max(80, min(300, 80 + 220 * rand()));
+
+            if mode == BehaviorMode.AltitudeCorrection
+                desiredAltitude = target.Position(3) + (-30 + 60 * rand());
+            else
+                desiredAltitude = target.Position(3);
+            end
+            desiredAltitude = max(80, min(300, desiredAltitude));
             desiredAltitude = min(max(desiredAltitude, altitudeLimits(1)), altitudeLimits(2));
             waypoint(3) = desiredAltitude;
 
@@ -148,7 +196,7 @@ classdef BehaviorPlanner
                 'BehaviorMode', mode, ...
                 'DesiredPosition', waypoint, ...
                 'DesiredHeading', atan2(waypoint(2) - target.Position(2), waypoint(1) - target.Position(1)), ...
-                'DesiredSpeed', profile.SpeedMin + rand() * (profile.SpeedMax - profile.SpeedMin), ...
+                'DesiredSpeed', desiredSpeed, ...
                 'DesiredAltitude', desiredAltitude, ...
                 'HoldTime', holdTime, ...
                 'Priority', 1, ...
@@ -211,10 +259,22 @@ classdef BehaviorPlanner
             transitModes = [
                 BehaviorMode.TurnToWaypoint
                 BehaviorMode.FollowRoad
+                BehaviorMode.ApproachIntersection
+                BehaviorMode.TurnAtIntersection
+                BehaviorMode.CruiseAfterTurn
                 BehaviorMode.Patrol
                 BehaviorMode.Cruise
+                BehaviorMode.LongCruise
+                BehaviorMode.WideTurn
                 BehaviorMode.Loiter
             ];
+
+            if target.Type == TargetType.Ground && isfield(target.MotionContext, 'SegmentLength')
+                if target.MotionContext.DistanceOnRoad >= target.MotionContext.SegmentLength
+                    tf = true;
+                    return;
+                end
+            end
 
             if BehaviorPlanner.hasReachedWaypoint(target) && ...
                     any(target.BehaviorMode == transitModes)

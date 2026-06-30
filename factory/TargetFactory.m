@@ -27,6 +27,7 @@ classdef TargetFactory
                 targetType, position, heading, speed, rcs, ...
                 'BehaviorCoefficients', coefficients);
             target = TargetFactory.initializeMotionContext(target, environment, profile);
+            target.MotionContext.SmoothedDesiredSpeed = target.Speed;
         end
 
         function speedMin = effectiveSpeedMin(profile, behaviorState)
@@ -58,6 +59,11 @@ classdef TargetFactory
                     target.MotionContext.RoadHeading = target.Heading;
                     target.MotionContext.DistanceOnRoad = 0;
                     target.MotionContext.SegmentLength = 80 + 120 * rand();
+                    target.MotionContext.CruiseSpeed = 15 + 10 * rand();
+                    target.MotionContext.ApproachSpeed = 6 + 6 * rand();
+                    target.MotionContext.TurnSpeed = 5 + 5 * rand();
+                    target.MotionContext.RoadPhase = 'FollowRoad';
+                    target.MotionContext.InTurn = false;
                 case char(TargetType.False)
                     target.MotionContext.StraightDistance = 0;
                     target.MotionContext.NextTurnDistance = 20 + 30 * rand();

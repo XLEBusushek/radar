@@ -9,7 +9,6 @@ classdef MotionBehaviorGuidance
 
             maxTurnStep = deg2rad(profile.MaxTurnRate) * dt;
             maxPitchStep = deg2rad(profile.MaxPitchRate) * dt;
-            maxSpeedStep = profile.MaxAcceleration * dt;
 
             desiredHeading = MotionBehaviorGuidance.resolveDesiredHeading( ...
                 target, behaviorCommand);
@@ -24,11 +23,13 @@ classdef MotionBehaviorGuidance
             end
 
             if isfinite(behaviorCommand.DesiredSpeed)
-                target.Speed = MotionKinematics.moveToward( ...
-                    target.Speed, behaviorCommand.DesiredSpeed, maxSpeedStep);
+                desiredSpeed = MotionBehaviorGuidance.resolveDesiredSpeed( ...
+                    target, behaviorCommand, profile, dt);
+                target = MotionKinematics.applySmoothSpeedToTarget( ...
+                    target, desiredSpeed, profile, dt);
                 if isstruct(target.MotionContext) && ...
                         isfield(target.MotionContext, 'DesiredSpeed')
-                    target.MotionContext.DesiredSpeed = behaviorCommand.DesiredSpeed;
+                    target.MotionContext.DesiredSpeed = desiredSpeed;
                 end
             end
         end
@@ -44,6 +45,19 @@ classdef MotionBehaviorGuidance
                     desiredHeading = atan2(deltaXY(2), deltaXY(1));
                 end
             end
+        end
+
+        function desiredSpeed = resolveDesiredSpeed(target, behaviorCommand, profile, dt)
+            if ~isfield(target.MotionContext, 'SmoothedDesiredSpeed')
+                target.MotionContext.SmoothedDesiredSpeed = target.Speed;
+            end
+
+            commandSpeed = behaviorCommand.DesiredSpeed;
+            responseStep = abs(commandSpeed - target.MotionContext.SmoothedDesiredSpeed) * ...
+                dt / max(profile.SpeedResponseTime, dt);
+            target.MotionContext.SmoothedDesiredSpeed = MotionKinematics.moveToward( ...
+                target.MotionContext.SmoothedDesiredSpeed, commandSpeed, max(responseStep, 0.01));
+            desiredSpeed = target.MotionContext.SmoothedDesiredSpeed;
         end
 
         function target = applyAltitudeGuidance(target, behaviorCommand, profile, environment, dt, maxPitchStep)

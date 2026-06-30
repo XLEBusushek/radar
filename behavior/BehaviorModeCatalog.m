@@ -15,12 +15,18 @@ classdef BehaviorModeCatalog
                 case char(TargetType.Ground)
                     modes = [
                         BehaviorMode.FollowRoad
+                        BehaviorMode.ApproachIntersection
+                        BehaviorMode.TurnAtIntersection
+                        BehaviorMode.CruiseAfterTurn
                         BehaviorMode.TurnToWaypoint
                         BehaviorMode.AvoidBoundary
                     ];
                 case char(TargetType.AirplaneUAV)
                     modes = [
                         BehaviorMode.Cruise
+                        BehaviorMode.LongCruise
+                        BehaviorMode.WideTurn
+                        BehaviorMode.AltitudeCorrection
                         BehaviorMode.Patrol
                         BehaviorMode.TurnToWaypoint
                         BehaviorMode.ChangeAltitude

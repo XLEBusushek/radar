@@ -8,13 +8,9 @@ classdef GroundMotionModel < MotionModelBase
 
             target = GroundMotionModel.ensureContext(target);
             target = MotionStateExecutor.applyState(target, decision.NextState, profile, dt);
-            target = MotionBehaviorGuidance.apply(target, behaviorCommand, profile, environment, dt);
             target = GroundMotionModel.updateRoadHeading(target, decision.NextState, behaviorCommand, environment);
             target = GroundMotionModel.alignToRoad(target, profile, dt);
-
-            if target.Speed < profile.SpeedMin
-                target.Speed = profile.SpeedMin;
-            end
+            target = GroundMotionModel.applyRoadSpeed(target, behaviorCommand, profile, dt);
 
             target.Pitch = 0;
             target = MotionKinematics.clampSpeed(target, profile, decision.NextState);
@@ -41,7 +37,46 @@ classdef GroundMotionModel < MotionModelBase
                 target.MotionContext.RoadHeading = RoadNetwork.nearestHeading(target.Heading);
                 target.MotionContext.DistanceOnRoad = 0;
                 target.MotionContext.SegmentLength = 80 + 120 * rand();
+                target = GroundMotionModel.initSegmentSpeeds(target);
             end
+        end
+
+        function target = initSegmentSpeeds(target)
+            context = target.MotionContext;
+            context.CruiseSpeed = 15 + 10 * rand();
+            context.ApproachSpeed = 6 + 6 * rand();
+            context.TurnSpeed = 5 + 5 * rand();
+            context.RoadPhase = 'FollowRoad';
+            context.InTurn = false;
+            target.MotionContext = context;
+        end
+
+        function target = applyRoadSpeed(target, behaviorCommand, profile, dt)
+            context = target.MotionContext;
+            distRemaining = max(0, context.SegmentLength - context.DistanceOnRoad);
+            headingError = abs(MotionKinematics.wrapAngle( ...
+                context.RoadHeading - target.Heading));
+            context.InTurn = headingError > deg2rad(8);
+
+            if context.InTurn
+                context.RoadPhase = 'TurnAtIntersection';
+                desiredSpeed = context.TurnSpeed;
+            elseif distRemaining < 35
+                context.RoadPhase = 'ApproachIntersection';
+                desiredSpeed = context.ApproachSpeed;
+            elseif isfield(context, 'RoadPhase') && strcmp(context.RoadPhase, 'CruiseAfterTurn')
+                desiredSpeed = context.CruiseSpeed;
+            else
+                context.RoadPhase = 'FollowRoad';
+                desiredSpeed = context.CruiseSpeed;
+            end
+
+            if BehaviorCommand.isActive(behaviorCommand) && isfinite(behaviorCommand.DesiredSpeed)
+                desiredSpeed = behaviorCommand.DesiredSpeed;
+            end
+
+            target.Speed = MotionKinematics.applySmoothSpeed(target.Speed, desiredSpeed, profile, dt);
+            target.MotionContext = context;
         end
 
         function target = updateRoadHeading(target, behaviorState, behaviorCommand, environment)
@@ -68,6 +103,10 @@ classdef GroundMotionModel < MotionModelBase
                 context.RoadHeading = RoadNetwork.turnHeading(context.RoadHeading, turnLeft);
                 context.DistanceOnRoad = 0;
                 context.SegmentLength = 80 + 120 * rand();
+                context.RoadPhase = 'CruiseAfterTurn';
+                context.ApproachSpeed = 6 + 6 * rand();
+                context.TurnSpeed = 5 + 5 * rand();
+                context.CruiseSpeed = 15 + 10 * rand();
             end
 
             target.MotionContext = context;

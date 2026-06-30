@@ -5,7 +5,6 @@ classdef MotionStateExecutor
         function target = applyState(target, behaviorState, profile, dt)
             maxTurnStep = deg2rad(profile.MaxTurnRate) * dt;
             maxPitchStep = deg2rad(profile.MaxPitchRate) * dt;
-            maxSpeedStep = profile.MaxAcceleration * dt;
 
             switch behaviorState
                 case TargetBehaviorState.FlyStraight
@@ -27,17 +26,14 @@ classdef MotionStateExecutor
                         target.Pitch = max(target.Pitch - maxPitchStep, -pi / 2);
                     end
 
-                case TargetBehaviorState.SpeedUp
-                    target.Speed = target.Speed + maxSpeedStep;
-
-                case TargetBehaviorState.SlowDown
-                    target.Speed = target.Speed - maxSpeedStep;
+                case {TargetBehaviorState.SpeedUp, TargetBehaviorState.SlowDown}
+                    % Скорость меняется только через плавную динамику в motion models.
 
                 case TargetBehaviorState.Hover
                     if profile.CanHover
                         hoverSpeedTarget = min(1.0, max(profile.HoverSpeedMin, 0.5));
-                        target.Speed = MotionKinematics.moveToward( ...
-                            target.Speed, hoverSpeedTarget, maxSpeedStep);
+                        target = MotionKinematics.applySmoothSpeedToTarget( ...
+                            target, hoverSpeedTarget, profile, dt);
                         target.Pitch = MotionKinematics.rotateToward(target.Pitch, 0, maxPitchStep);
                     end
 

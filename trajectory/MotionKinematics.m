@@ -10,29 +10,36 @@ classdef MotionKinematics
             ];
         end
 
-        function target = clampSpeed(target, profile, behaviorState, allowRaiseMin)
-            if nargin < 3
-                behaviorState = target.CurrentState;
+        function newSpeed = applySmoothSpeed(currentSpeed, desiredSpeed, profile, dt)
+            speedError = desiredSpeed - currentSpeed;
+            if speedError > 0
+                maxDelta = profile.MaxAcceleration * dt;
+            else
+                maxDelta = profile.MaxDeceleration * dt;
             end
-            if nargin < 4
-                allowRaiseMin = true;
-            end
+            deltaSpeed = max(-maxDelta, min(maxDelta, speedError));
+            newSpeed = currentSpeed + deltaSpeed;
+        end
 
-            minSpeed = profile.SpeedMin;
+        function target = applySmoothSpeedToTarget(target, desiredSpeed, profile, dt)
+            target.Speed = MotionKinematics.applySmoothSpeed( ...
+                target.Speed, desiredSpeed, profile, dt);
+        end
+
+        function target = clampSpeed(target, profile, behaviorState, allowRaiseMin) %#ok<INUSD>
+            % clampSpeed  Аварийная защита от выхода за абсолютные пределы скорости.
             maxSpeed = profile.SpeedMax;
+            minSpeed = 0;
 
-            if ~isnan(profile.CruiseSpeedMin)
-                minSpeed = profile.CruiseSpeedMin;
-            end
-
-            if behaviorState == TargetBehaviorState.Hover && profile.CanHover
+            if nargin >= 3 && behaviorState == TargetBehaviorState.Hover && profile.CanHover
+                maxSpeed = min(maxSpeed, 1.0);
                 minSpeed = profile.HoverSpeedMin;
             end
 
-            if allowRaiseMin
-                target.Speed = min(max(target.Speed, minSpeed), maxSpeed);
-            else
-                target.Speed = min(max(target.Speed, 0), maxSpeed);
+            if target.Speed > maxSpeed
+                target.Speed = maxSpeed;
+            elseif target.Speed < minSpeed
+                target.Speed = minSpeed;
             end
         end
 
@@ -109,12 +116,16 @@ classdef MotionKinematics
 
         function target = enforceRateLimits(target, initialHeading, initialSpeed, profile, dt)
             maxTurnStep = deg2rad(profile.MaxTurnRate) * dt;
-            maxSpeedStep = profile.MaxAcceleration * dt;
 
             target.Heading = MotionKinematics.rotateToward( ...
                 initialHeading, target.Heading, maxTurnStep);
 
             speedDelta = target.Speed - initialSpeed;
+            if speedDelta > 0
+                maxSpeedStep = profile.MaxAcceleration * dt;
+            else
+                maxSpeedStep = profile.MaxDeceleration * dt;
+            end
             speedDelta = max(-maxSpeedStep, min(maxSpeedStep, speedDelta));
             target.Speed = initialSpeed + speedDelta;
         end

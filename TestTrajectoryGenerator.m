@@ -130,7 +130,11 @@ function errors = validateTargetStep(target, profile, altitudeLimits, environmen
     end
 
     speedDelta = abs(target.Speed - prevSpeed);
-    maxSpeedStep = profile.MaxAcceleration * dt + tolerance;
+    if target.Speed > prevSpeed
+        maxSpeedStep = profile.MaxAcceleration * dt + tolerance;
+    else
+        maxSpeedStep = profile.MaxDeceleration * dt + tolerance;
+    end
     if speedDelta > maxSpeedStep
         fprintf('ERROR: Target %d speed change %.4f exceeds limit at step %d.\n', ...
             target.ID, speedDelta, step);

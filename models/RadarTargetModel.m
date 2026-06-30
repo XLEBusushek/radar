@@ -37,6 +37,9 @@ classdef RadarTargetModel
         LastWaypoint (1, 3) double = [nan, nan, nan]
         LastBehaviorChangeTime double = 0
         DistanceSinceLastBehaviorChange double = 0
+        BehaviorCommandStartTime double = 0
+        BehaviorCommandStartPosition (1, 3) double = [nan, nan, nan]
+        BehaviorCommandDistance double = 0
         HistoryWaypoint               % История waypoints, N×3
     end
 
@@ -82,6 +85,9 @@ classdef RadarTargetModel
             obj.LastWaypoint = [nan, nan, nan];
             obj.LastBehaviorChangeTime = 0;
             obj.DistanceSinceLastBehaviorChange = 0;
+            obj.BehaviorCommandStartTime = 0;
+            obj.BehaviorCommandStartPosition = [nan, nan, nan];
+            obj.BehaviorCommandDistance = 0;
             obj.HistoryWaypoint = zeros(0, 3);
 
             obj = obj.updateVelocityFromKinematics();
@@ -163,20 +169,38 @@ classdef RadarTargetModel
                 return;
             end
 
-            modeChanged = isempty(obj.BehaviorCommand) || ...
-                ~isfield(obj.BehaviorCommand, 'BehaviorMode') || ...
-                command.BehaviorMode ~= obj.BehaviorMode || ...
-                command.Priority > obj.BehaviorCommand.Priority;
-
-            if modeChanged || ~obj.isBehaviorCommandActive()
-                obj.LastWaypoint = obj.TargetWaypoint;
-                if all(isfinite(command.DesiredPosition))
-                    obj.TargetWaypoint = command.DesiredPosition;
-                    obj.HistoryWaypoint = [obj.HistoryWaypoint; command.DesiredPosition];
+            if obj.isBehaviorCommandActive() && ...
+                    command.BehaviorMode == obj.BehaviorMode && ...
+                    strcmp(command.Reason, obj.BehaviorCommand.Reason)
+                if command.Priority > obj.BehaviorCommand.Priority
+                    obj.BehaviorCommand.Priority = command.Priority;
                 end
-                obj.LastBehaviorChangeTime = obj.BehaviorTime;
-                obj.DistanceSinceLastBehaviorChange = 0;
-                obj.BehaviorTime = 0;
+                if all(isfinite(command.DesiredPosition))
+                    obj.BehaviorCommand.DesiredPosition = command.DesiredPosition;
+                end
+                if isfinite(command.DesiredHeading)
+                    obj.BehaviorCommand.DesiredHeading = command.DesiredHeading;
+                end
+                return;
+            end
+
+            obj.LastWaypoint = obj.TargetWaypoint;
+            if all(isfinite(command.DesiredPosition))
+                obj.TargetWaypoint = command.DesiredPosition;
+                obj.HistoryWaypoint = [obj.HistoryWaypoint; command.DesiredPosition];
+            end
+            obj.LastBehaviorChangeTime = obj.BehaviorTime;
+            obj.DistanceSinceLastBehaviorChange = 0;
+            obj.BehaviorCommandStartTime = obj.BehaviorTime;
+            obj.BehaviorCommandStartPosition = obj.Position;
+            obj.BehaviorCommandDistance = 0;
+            obj.BehaviorTime = 0;
+
+            if isstruct(obj.MotionContext)
+                obj.MotionContext.SmoothedDesiredSpeed = obj.Speed;
+                if isfinite(command.DesiredSpeed)
+                    obj.MotionContext.CommandDesiredSpeed = command.DesiredSpeed;
+                end
             end
 
             obj.BehaviorCommand = command;
@@ -186,6 +210,7 @@ classdef RadarTargetModel
 
         function obj = recordBehaviorDistance(obj, distance)
             obj.DistanceSinceLastBehaviorChange = obj.DistanceSinceLastBehaviorChange + distance;
+            obj.BehaviorCommandDistance = obj.BehaviorCommandDistance + distance;
         end
     end
 
