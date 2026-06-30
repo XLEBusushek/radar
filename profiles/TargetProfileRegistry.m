@@ -92,6 +92,8 @@ classdef TargetProfileRegistry
             profile.MaxTurnRate = 25;
             profile.MaxPitchRate = 15;
             profile.MaxAcceleration = 4;
+            profile.HoverSpeedMin = 0;
+            profile.CruiseSpeedMin = 5;
             profile.CanHover = true;
             profile.CanClimb = true;
             profile.CanDescend = true;

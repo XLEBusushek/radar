@@ -44,8 +44,9 @@ function TestTrajectoryGenerator()
             prevHeading = target.Heading;
             prevSpeed = target.Speed;
 
-            decision = engine.decide(target.toDecisionInput(), environment);
-            target = TrajectoryGenerator.updateMotion(target, decision, environment, dt);
+            [target, behaviorCommand] = BehaviorPlanner.plan(target, environment, dt);
+            decision = engine.decide(target.toDecisionInput(), environment, behaviorCommand);
+            target = TrajectoryGenerator.updateMotion(target, decision, behaviorCommand, environment, dt);
 
             errors = errors + validateTargetStep(target, profile, altitudeLimits, environment, ...
                 prevHeading, prevSpeed, dt, step);
@@ -86,10 +87,11 @@ end
 function errors = validateTargetStep(target, profile, altitudeLimits, environment, prevHeading, prevSpeed, dt, step)
     errors = 0;
     tolerance = 1e-6;
+    [speedMin, speedMax] = getSpeedLimits(profile, target.CurrentState);
 
-    if target.Speed < profile.SpeedMin - tolerance || target.Speed > profile.SpeedMax + tolerance
+    if target.Speed < speedMin - tolerance || target.Speed > speedMax + tolerance
         fprintf('ERROR: Target %d speed %.4f out of [%.4f, %.4f] at step %d.\n', ...
-            target.ID, target.Speed, profile.SpeedMin, profile.SpeedMax, step);
+            target.ID, target.Speed, speedMin, speedMax, step);
         errors = errors + 1;
     end
 
@@ -173,4 +175,17 @@ function plotValidationResults(timeAxis, trajectoryHistory, speedHistory, altitu
     xlabel('Time, s');
     ylabel('Heading, deg');
     title('Heading(t)');
+end
+
+function [speedMin, speedMax] = getSpeedLimits(profile, behaviorState)
+    if behaviorState == TargetBehaviorState.Hover && profile.CanHover
+        speedMin = profile.HoverSpeedMin;
+        speedMax = profile.SpeedMax;
+    elseif profile.CanHover && ~isnan(profile.CruiseSpeedMin)
+        speedMin = profile.HoverSpeedMin;
+        speedMax = profile.SpeedMax;
+    else
+        speedMin = TargetFactory.effectiveSpeedMin(profile, behaviorState);
+        speedMax = profile.SpeedMax;
+    end
 end

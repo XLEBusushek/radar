@@ -10,8 +10,36 @@ classdef MotionKinematics
             ];
         end
 
-        function target = clampSpeed(target, profile)
-            target.Speed = min(max(target.Speed, profile.SpeedMin), profile.SpeedMax);
+        function target = clampSpeed(target, profile, behaviorState, allowRaiseMin)
+            if nargin < 3
+                behaviorState = target.CurrentState;
+            end
+            if nargin < 4
+                allowRaiseMin = true;
+            end
+
+            minSpeed = profile.SpeedMin;
+            maxSpeed = profile.SpeedMax;
+
+            if ~isnan(profile.CruiseSpeedMin)
+                minSpeed = profile.CruiseSpeedMin;
+            end
+
+            if behaviorState == TargetBehaviorState.Hover && profile.CanHover
+                minSpeed = profile.HoverSpeedMin;
+            end
+
+            if allowRaiseMin
+                target.Speed = min(max(target.Speed, minSpeed), maxSpeed);
+            else
+                target.Speed = min(max(target.Speed, 0), maxSpeed);
+            end
+        end
+
+        function value = moveToward(currentValue, targetValue, maxStep)
+            delta = targetValue - currentValue;
+            delta = max(-maxStep, min(maxStep, delta));
+            value = currentValue + delta;
         end
 
         function target = integratePosition(target, environment, dt)

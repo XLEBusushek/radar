@@ -28,6 +28,16 @@ classdef RadarTargetModel
         HistoryState      % История состояний поведения
         BehaviorCoefficients  % Индивидуальные коэффициенты поведения
         IsHidden (1, 1) logical = false  % Признак скрытого состояния
+        MotionContext                 % Дополнительное состояние модели движения
+        BehaviorCommand               % Активная команда поведенческого слоя
+        BehaviorMode                  % Текущий поведенческий режим
+        BehaviorTime double = 0       % Время в текущем режиме, с
+        BehaviorHoldTime double = 0   % Длительность удержания режима, с
+        TargetWaypoint (1, 3) double = [nan, nan, nan]
+        LastWaypoint (1, 3) double = [nan, nan, nan]
+        LastBehaviorChangeTime double = 0
+        DistanceSinceLastBehaviorChange double = 0
+        HistoryWaypoint               % История waypoints, N×3
     end
 
     methods
@@ -63,6 +73,16 @@ classdef RadarTargetModel
             obj.HistorySpeed = zeros(0, 1);
             obj.HistoryState = TargetBehaviorState.empty(0, 1);
             obj.IsHidden = false;
+            obj.MotionContext = struct();
+            obj.BehaviorCommand = BehaviorCommand.empty();
+            obj.BehaviorMode = BehaviorMode.Cruise;
+            obj.BehaviorTime = 0;
+            obj.BehaviorHoldTime = 0;
+            obj.TargetWaypoint = [nan, nan, nan];
+            obj.LastWaypoint = [nan, nan, nan];
+            obj.LastBehaviorChangeTime = 0;
+            obj.DistanceSinceLastBehaviorChange = 0;
+            obj.HistoryWaypoint = zeros(0, 3);
 
             obj = obj.updateVelocityFromKinematics();
             obj = obj.saveHistory();
@@ -128,6 +148,44 @@ classdef RadarTargetModel
                 obj.CurrentState = decision.NextState;
                 obj.StateTime = 0;
             end
+        end
+
+        function obj = tickBehaviorTime(obj, dt)
+            obj.BehaviorTime = obj.BehaviorTime + dt;
+        end
+
+        function tf = isBehaviorCommandActive(obj)
+            tf = obj.BehaviorHoldTime > 0 && obj.BehaviorTime < obj.BehaviorHoldTime;
+        end
+
+        function obj = setBehaviorCommand(obj, command)
+            if ~BehaviorCommand.isActive(command)
+                return;
+            end
+
+            modeChanged = isempty(obj.BehaviorCommand) || ...
+                ~isfield(obj.BehaviorCommand, 'BehaviorMode') || ...
+                command.BehaviorMode ~= obj.BehaviorMode || ...
+                command.Priority > obj.BehaviorCommand.Priority;
+
+            if modeChanged || ~obj.isBehaviorCommandActive()
+                obj.LastWaypoint = obj.TargetWaypoint;
+                if all(isfinite(command.DesiredPosition))
+                    obj.TargetWaypoint = command.DesiredPosition;
+                    obj.HistoryWaypoint = [obj.HistoryWaypoint; command.DesiredPosition];
+                end
+                obj.LastBehaviorChangeTime = obj.BehaviorTime;
+                obj.DistanceSinceLastBehaviorChange = 0;
+                obj.BehaviorTime = 0;
+            end
+
+            obj.BehaviorCommand = command;
+            obj.BehaviorMode = command.BehaviorMode;
+            obj.BehaviorHoldTime = command.HoldTime;
+        end
+
+        function obj = recordBehaviorDistance(obj, distance)
+            obj.DistanceSinceLastBehaviorChange = obj.DistanceSinceLastBehaviorChange + distance;
         end
     end
 

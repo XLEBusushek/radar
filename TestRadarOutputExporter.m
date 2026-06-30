@@ -139,6 +139,11 @@ function errors = validateTable(tableData)
         'Vy'
         'Vz'
         'RCS'
+        'BehaviorMode'
+        'DesiredHeading'
+        'DesiredSpeed'
+        'DesiredAltitude'
+        'BehaviorReason'
     };
 
     for columnIdx = 1:numel(requiredColumns)

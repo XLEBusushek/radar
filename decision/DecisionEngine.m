@@ -9,11 +9,12 @@ classdef DecisionEngine
     %   decision = engine.decide(target.toDecisionInput(), environment);
 
     methods
-        function decision = decide(~, target, environment)
+        function decision = decide(~, target, environment, behaviorCommand)
             arguments
                 ~
                 target (1, 1) struct
                 environment (1, 1) struct
+                behaviorCommand (1, 1) struct = struct()
             end
 
             DecisionEngine.validateTargetInput(target);
@@ -30,7 +31,7 @@ classdef DecisionEngine
             probabilities = transitionMatrix(currentIndex, :);
 
             context = DecisionContext.create(target, environment, probabilities);
-            probabilities = ProbabilityModifiers.apply(probabilities, context);
+            probabilities = ProbabilityModifiers.apply(probabilities, context, behaviorCommand);
 
             nextIndex = DecisionEngine.sampleState(probabilities);
             nextState = BehaviorStateCatalog.fromIndex(nextIndex);

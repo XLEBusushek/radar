@@ -13,5 +13,6 @@ function setupRadarPaths()
     addpath(fullfile(projectRoot, 'export'));
     addpath(fullfile(projectRoot, 'decision'));
     addpath(fullfile(projectRoot, 'decision', 'matrices'));
+    addpath(fullfile(projectRoot, 'behavior'));
     addpath(fullfile(projectRoot, 'utils'));
 end

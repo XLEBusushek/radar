@@ -29,9 +29,10 @@ classdef SimulationEngine
             for step = 1:numSteps
                 for targetIdx = 1:numel(targets)
                     target = targets{targetIdx};
-                    decision = decisionEngine.decide(target.toDecisionInput(), environment);
+                    [target, behaviorCommand] = BehaviorPlanner.plan(target, environment, config.Dt);
+                    decision = decisionEngine.decide(target.toDecisionInput(), environment, behaviorCommand);
                     targets{targetIdx} = TrajectoryGenerator.updateMotion( ...
-                        target, decision, environment, config.Dt);
+                        target, decision, behaviorCommand, environment, config.Dt);
                 end
 
                 currentTime = step * config.Dt;
@@ -112,6 +113,25 @@ classdef SimulationEngine
         end
 
         function snapshot = targetSnapshot(target, currentTime)
+            behaviorCommand = target.BehaviorCommand;
+            desiredHeading = target.Heading;
+            desiredSpeed = target.Speed;
+            desiredAltitude = target.Position(3);
+            behaviorReason = "";
+
+            if isstruct(behaviorCommand) && BehaviorCommand.isActive(behaviorCommand)
+                if isfinite(behaviorCommand.DesiredHeading)
+                    desiredHeading = behaviorCommand.DesiredHeading;
+                end
+                if isfinite(behaviorCommand.DesiredSpeed)
+                    desiredSpeed = behaviorCommand.DesiredSpeed;
+                end
+                if isfinite(behaviorCommand.DesiredAltitude)
+                    desiredAltitude = behaviorCommand.DesiredAltitude;
+                end
+                behaviorReason = string(behaviorCommand.Reason);
+            end
+
             snapshot = struct( ...
                 'ID', target.ID, ...
                 'Type', target.Type, ...
@@ -120,6 +140,11 @@ classdef SimulationEngine
                 'RCS', target.RCS, ...
                 'CurrentState', target.CurrentState, ...
                 'IsHidden', target.IsHidden, ...
+                'BehaviorMode', target.BehaviorMode, ...
+                'DesiredHeading', desiredHeading, ...
+                'DesiredSpeed', desiredSpeed, ...
+                'DesiredAltitude', desiredAltitude, ...
+                'BehaviorReason', behaviorReason, ...
                 'Time', currentTime);
         end
 

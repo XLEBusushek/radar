@@ -35,10 +35,9 @@ classdef MotionStateExecutor
 
                 case TargetBehaviorState.Hover
                     if profile.CanHover
-                        hoverSpeed = max(profile.SpeedMin * 0.1, 0.05);
-                        if target.Speed > hoverSpeed
-                            target.Speed = max(target.Speed - maxSpeedStep, hoverSpeed);
-                        end
+                        hoverSpeedTarget = min(1.0, max(profile.HoverSpeedMin, 0.5));
+                        target.Speed = MotionKinematics.moveToward( ...
+                            target.Speed, hoverSpeedTarget, maxSpeedStep);
                         target.Pitch = MotionKinematics.rotateToward(target.Pitch, 0, maxPitchStep);
                     end
 
@@ -50,7 +49,7 @@ classdef MotionStateExecutor
                         'Unknown behavior state: %s', string(behaviorState));
             end
 
-            target = MotionKinematics.clampSpeed(target, profile);
+            target = MotionKinematics.clampSpeed(target, profile, behaviorState);
         end
     end
 end

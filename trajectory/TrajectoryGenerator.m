@@ -2,15 +2,17 @@ classdef TrajectoryGenerator
     % TrajectoryGenerator  Исполнение решений DecisionEngine в физическом движении.
 
     methods (Static)
-        function target = updateMotion(target, decision, environment, dt)
+        function target = updateMotion(target, decision, behaviorCommand, environment, dt)
             arguments
                 target (1, 1) RadarTargetModel
                 decision (1, 1) struct
+                behaviorCommand (1, 1) struct
                 environment (1, 1) struct
                 dt (1, 1) double {mustBePositive}
             end
 
             TrajectoryGenerator.validateDecision(decision);
+            previousPosition = target.Position;
 
             target = target.applyDecision(decision);
 
@@ -20,7 +22,10 @@ classdef TrajectoryGenerator
 
             profile = TargetProfileRegistry.getProfile(target.Type);
             motionUpdate = MotionModelRegistry.getModel(target.Type);
-            target = motionUpdate(target, decision, profile, environment, dt);
+            target = motionUpdate(target, decision, behaviorCommand, profile, environment, dt);
+
+            stepDistance = norm(target.Position - previousPosition);
+            target = target.recordBehaviorDistance(stepDistance);
 
             target.StateTime = target.StateTime + dt;
             target = target.saveHistory();

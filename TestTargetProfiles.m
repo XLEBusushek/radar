@@ -68,6 +68,8 @@ function errors = assertProfileStructure(profile, targetType)
         'RCSMax'
         'AltitudeMin'
         'AltitudeMax'
+        'HoverSpeedMin'
+        'CruiseSpeedMin'
         'MaxTurnRate'
         'MaxPitchRate'
         'MaxAcceleration'

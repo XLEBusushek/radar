@@ -18,13 +18,56 @@ classdef TargetFactory
             ];
 
             heading = TargetFactory.randomInRange(-pi, pi);
-            speed = TargetFactory.randomInRange(profile.SpeedMin, profile.SpeedMax);
+            speedMin = TargetFactory.effectiveSpeedMin(profile);
+            speed = TargetFactory.randomInRange(speedMin, profile.SpeedMax);
             rcs = TargetFactory.randomInRange(profile.RCSMin, profile.RCSMax);
             coefficients = BehaviorCoefficients.createRandom();
 
             target = RadarTargetModel( ...
                 targetType, position, heading, speed, rcs, ...
                 'BehaviorCoefficients', coefficients);
+            target = TargetFactory.initializeMotionContext(target, environment, profile);
+        end
+
+        function speedMin = effectiveSpeedMin(profile, behaviorState)
+            if nargin < 2
+                behaviorState = TargetBehaviorState.FlyStraight;
+            end
+
+            if behaviorState == TargetBehaviorState.Hover && profile.CanHover
+                speedMin = profile.HoverSpeedMin;
+                return;
+            end
+
+            if ~isnan(profile.CruiseSpeedMin)
+                speedMin = profile.CruiseSpeedMin;
+            else
+                speedMin = profile.SpeedMin;
+            end
+        end
+
+        function target = initializeMotionContext(target, environment, profile)
+            if nargin < 3
+                profile = TargetProfileRegistry.getProfile(target.Type);
+            end
+
+            switch char(target.Type)
+                case char(TargetType.Ground)
+                    target.Heading = RoadNetwork.nearestHeading(target.Heading);
+                    target.MotionContext.BaseAltitude = target.Position(3);
+                    target.MotionContext.RoadHeading = target.Heading;
+                    target.MotionContext.DistanceOnRoad = 0;
+                    target.MotionContext.SegmentLength = 80 + 120 * rand();
+                case char(TargetType.False)
+                    target.MotionContext.StraightDistance = 0;
+                    target.MotionContext.NextTurnDistance = 20 + 30 * rand();
+                    target.MotionContext.PitchPhase = 2 * pi * rand();
+                case char(TargetType.AirplaneUAV)
+                    target.MotionContext.LastHeading = target.Heading;
+                case char(TargetType.Quadcopter)
+                    target.MotionContext.DesiredSpeed = target.Speed;
+                    target.MotionContext.HoverAfterWaypoint = false;
+            end
         end
 
         function limits = resolveAltitudeLimits(profile, environment)
