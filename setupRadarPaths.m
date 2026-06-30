@@ -1,0 +1,13 @@
+function setupRadarPaths()
+    % setupRadarPaths  Добавляет каталоги проекта в MATLAB path.
+
+    projectRoot = fileparts(mfilename('fullpath'));
+
+    addpath(fullfile(projectRoot, 'enums'));
+    addpath(fullfile(projectRoot, 'models'));
+    addpath(fullfile(projectRoot, 'profiles'));
+    addpath(fullfile(projectRoot, 'factory'));
+    addpath(fullfile(projectRoot, 'decision'));
+    addpath(fullfile(projectRoot, 'decision', 'matrices'));
+    addpath(fullfile(projectRoot, 'utils'));
+end

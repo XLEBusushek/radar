@@ -1,0 +1,16 @@
+# MATLAB
+*.asv
+*.m~
+*.autosave
+slprj/
+*.slxc
+*.mlappinstall
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE
+.vscode/
+*.code-workspace
