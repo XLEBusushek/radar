@@ -10,10 +10,13 @@ radar/
 ├── models/             % RadarTargetModel, BehaviorCoefficients
 ├── profiles/           % TargetProfile, TargetProfileRegistry
 ├── factory/            % TargetFactory
+├── trajectory/         % TrajectoryGenerator, motion models
+├── simulation/         % SimulationEngine, PlotSimulationResult
 ├── decision/           % DecisionEngine, матрицы переходов
 ├── examples/           % демо-скрипты
 ├── TestDecisionEngine.m
 ├── TestTargetProfiles.m
+├── TestTrajectoryGenerator.m
 └── setupRadarPaths.m
 ```
 
@@ -28,16 +31,30 @@ target = TargetFactory.createRandom(TargetType.Quadcopter, environment);
 
 engine = DecisionEngine();
 decision = engine.decide(target.toDecisionInput(), environment);
-target = target.applyDecision(decision);
-target = target.update(1.0);
+target = TrajectoryGenerator.updateMotion(target, decision, environment, 1.0);
+
+engine = SimulationEngine();
+config.NumFalse = 5;
+config.NumGround = 5;
+config.NumAirplaneUAV = 3;
+config.NumQuadcopter = 3;
+config.BoxSize = [1000, 1000, 300];
+config.Duration = 300;
+config.Dt = 1;
+config.OutputPeriod = 5;
+config.RandomSeed = 42;
+result = engine.run(config);
+PlotSimulationResult(result);
 ```
 
 ## Тесты
 
 ```matlab
 setupRadarPaths();
-TestTargetProfiles      % валидация профилей целей (ТЗ 2.2)
-TestDecisionEngine      % валидация Decision Engine (ТЗ 2.1)
+TestTargetProfiles         % валидация профилей целей (ТЗ 2.2)
+TestDecisionEngine         % валидация Decision Engine (ТЗ 2.1)
+TestTrajectoryGenerator    % валидация TrajectoryGenerator (ТЗ 3)
+TestSimulationEngine       % валидация SimulationEngine (ТЗ 4)
 ```
 
 ## Реализованные этапы
@@ -48,6 +65,8 @@ TestDecisionEngine      % валидация Decision Engine (ТЗ 2.1)
 | ТЗ №2 | `DecisionEngine` — модуль принятия решений |
 | ТЗ №2.1 | `TestDecisionEngine` — валидация Decision Engine |
 | ТЗ №2.2 | `TargetProfileRegistry`, `TargetFactory` — профили и фабрика целей |
+| ТЗ №3 | `TrajectoryGenerator` — модуль генерации траекторий |
+| ТЗ №4 | `SimulationEngine` — полная симуляция целей |
 
 ## Типы целей
 

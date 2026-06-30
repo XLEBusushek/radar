@@ -7,6 +7,8 @@ function setupRadarPaths()
     addpath(fullfile(projectRoot, 'models'));
     addpath(fullfile(projectRoot, 'profiles'));
     addpath(fullfile(projectRoot, 'factory'));
+    addpath(fullfile(projectRoot, 'trajectory'));
+    addpath(fullfile(projectRoot, 'simulation'));
     addpath(fullfile(projectRoot, 'decision'));
     addpath(fullfile(projectRoot, 'decision', 'matrices'));
     addpath(fullfile(projectRoot, 'utils'));

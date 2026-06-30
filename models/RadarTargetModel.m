@@ -22,7 +22,12 @@ classdef RadarTargetModel
         StateTime double  % Время в текущем состоянии, с
         HistoryPosition   % История координат, N×3
         HistoryVelocity   % История скоростей, N×3
+        HistoryHeading    % История курса
+        HistoryPitch      % История тангажа
+        HistorySpeed      % История модуля скорости
+        HistoryState      % История состояний поведения
         BehaviorCoefficients  % Индивидуальные коэффициенты поведения
+        IsHidden (1, 1) logical = false  % Признак скрытого состояния
     end
 
     methods
@@ -53,6 +58,11 @@ classdef RadarTargetModel
             obj.StateTime = 0;
             obj.HistoryPosition = zeros(0, 3);
             obj.HistoryVelocity = zeros(0, 3);
+            obj.HistoryHeading = zeros(0, 1);
+            obj.HistoryPitch = zeros(0, 1);
+            obj.HistorySpeed = zeros(0, 1);
+            obj.HistoryState = TargetBehaviorState.empty(0, 1);
+            obj.IsHidden = false;
 
             obj = obj.updateVelocityFromKinematics();
             obj = obj.saveHistory();
@@ -73,6 +83,10 @@ classdef RadarTargetModel
         function obj = saveHistory(obj)
             obj.HistoryPosition = [obj.HistoryPosition; obj.Position];
             obj.HistoryVelocity = [obj.HistoryVelocity; obj.Velocity];
+            obj.HistoryHeading = [obj.HistoryHeading; obj.Heading];
+            obj.HistoryPitch = [obj.HistoryPitch; obj.Pitch];
+            obj.HistorySpeed = [obj.HistorySpeed; obj.Speed];
+            obj.HistoryState = [obj.HistoryState; obj.CurrentState];
         end
 
         function state = getState(obj)
@@ -87,7 +101,8 @@ classdef RadarTargetModel
                 'RCS', obj.RCS, ...
                 'CurrentState', obj.CurrentState, ...
                 'StateTime', obj.StateTime, ...
-                'BehaviorCoefficients', obj.BehaviorCoefficients);
+                'BehaviorCoefficients', obj.BehaviorCoefficients, ...
+                'IsHidden', obj.IsHidden);
         end
 
         function input = toDecisionInput(obj)
@@ -116,6 +131,12 @@ classdef RadarTargetModel
         end
     end
 
+    methods (Static)
+        function resetIdCounter()
+            RadarTargetModel.manageIdCounter('reset');
+        end
+    end
+
     methods (Access = private)
         function obj = updateVelocityFromKinematics(obj)
             obj.Velocity = [
@@ -128,12 +149,26 @@ classdef RadarTargetModel
 
     methods (Static, Access = private)
         function id = generateID()
+            id = RadarTargetModel.manageIdCounter('next');
+        end
+
+        function id = manageIdCounter(action)
             persistent nextID;
+
             if isempty(nextID)
                 nextID = 1;
             end
-            id = nextID;
-            nextID = nextID + 1;
+
+            if nargin < 1 || strcmp(action, 'next')
+                id = nextID;
+                nextID = nextID + 1;
+                return;
+            end
+
+            if strcmp(action, 'reset')
+                nextID = 1;
+                id = 1;
+            end
         end
     end
 end

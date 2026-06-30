@@ -18,6 +18,7 @@ classdef SimulationEnvironment
 
             halfXY = areaSize(1:2) / 2;
             environment.AreaSize = areaSize;
+            environment.BoxSize = areaSize;
             environment.XLimits = [-halfXY(1), halfXY(1)];
             environment.YLimits = [-halfXY(2), halfXY(2)];
             environment.ZLimits = [minAltitude, maxAltitude];
