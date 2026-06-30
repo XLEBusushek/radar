@@ -12,6 +12,8 @@ radar/
 ├── factory/            % TargetFactory
 ├── trajectory/         % TrajectoryGenerator, motion models
 ├── simulation/         % SimulationEngine, PlotSimulationResult
+├── integration/        % PhasedTargetAdapter
+├── export/             % RadarOutputExporter
 ├── decision/           % DecisionEngine, матрицы переходов
 ├── examples/           % демо-скрипты
 ├── TestDecisionEngine.m
@@ -20,7 +22,14 @@ radar/
 └── setupRadarPaths.m
 ```
 
-## Быстрый старт
+## Запуск демонстрации
+
+```matlab
+addpath('c:/path/to/radar');
+main
+```
+
+Параметры задаются в начале `main.m` или перед вызовом `run('main.m')`.
 
 ```matlab
 addpath('c:/path/to/radar');
@@ -55,6 +64,9 @@ TestTargetProfiles         % валидация профилей целей (Т�
 TestDecisionEngine         % валидация Decision Engine (ТЗ 2.1)
 TestTrajectoryGenerator    % валидация TrajectoryGenerator (ТЗ 3)
 TestSimulationEngine       % валидация SimulationEngine (ТЗ 4)
+TestPhasedTargetAdapter    % валидация PhasedTargetAdapter (ТЗ 5, требует Phased Array Toolbox)
+TestRadarOutputExporter    % валидация RadarOutputExporter (ТЗ 6)
+TestMainScenario           % валидация main.m (ТЗ 7)
 ```
 
 ## Реализованные этапы
@@ -67,6 +79,9 @@ TestSimulationEngine       % валидация SimulationEngine (ТЗ 4)
 | ТЗ №2.2 | `TargetProfileRegistry`, `TargetFactory` — профили и фабрика целей |
 | ТЗ №3 | `TrajectoryGenerator` — модуль генерации траекторий |
 | ТЗ №4 | `SimulationEngine` — полная симуляция целей |
+| ТЗ №5 | `PhasedTargetAdapter` — интеграция с Phased Array Toolbox |
+| ТЗ №6 | `RadarOutputExporter` — экспорт радиолокационных данных |
+| ТЗ №7 | `main.m`, `PlotFlightMap` — финальный сценарий и карта полётов |
 
 ## Типы целей
 
