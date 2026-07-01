@@ -37,7 +37,9 @@ classdef BehaviorModeCatalog
                     modes = [
                         BehaviorMode.Cruise
                         BehaviorMode.TurnToWaypoint
+                        BehaviorMode.MoveToPoint
                         BehaviorMode.ChangeAltitude
+                        BehaviorMode.AltitudeAdjust
                         BehaviorMode.HoverObserve
                         BehaviorMode.AvoidBoundary
                         BehaviorMode.Loiter

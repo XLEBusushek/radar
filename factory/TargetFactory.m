@@ -54,16 +54,14 @@ classdef TargetFactory
 
             switch char(target.Type)
                 case char(TargetType.Ground)
-                    target.Heading = RoadNetwork.nearestHeading(target.Heading);
-                    target.MotionContext.BaseAltitude = target.Position(3);
-                    target.MotionContext.RoadHeading = target.Heading;
+                    stream = RandStream('mt19937ar', 'Seed', round(target.ID + 17));
+                    target.MotionContext.LaneOffset = RoadGraph.pickLaneOffset(stream);
                     target.MotionContext.DistanceOnRoad = 0;
-                    target.MotionContext.SegmentLength = 80 + 120 * rand();
-                    target.MotionContext.CruiseSpeed = 15 + 10 * rand();
-                    target.MotionContext.ApproachSpeed = 6 + 6 * rand();
-                    target.MotionContext.TurnSpeed = 5 + 5 * rand();
-                    target.MotionContext.RoadPhase = 'FollowRoad';
-                    target.MotionContext.InTurn = false;
+                    target.MotionContext.CruiseSpeed = 15 + 10 * stream.rand();
+                    target.MotionContext.ApproachSpeed = 8 + 4 * stream.rand();
+                    target.MotionContext.TurnSpeed = 5 + 3 * stream.rand();
+                    target.MotionContext.GroundPhase = 'Drive';
+                    target = TargetFactory.snapGroundToRoad(target, environment);
                 case char(TargetType.False)
                     target.MotionContext.StraightDistance = 0;
                     target.MotionContext.NextTurnDistance = 20 + 30 * rand();
@@ -74,6 +72,26 @@ classdef TargetFactory
                     target.MotionContext.DesiredSpeed = target.Speed;
                     target.MotionContext.HoverAfterWaypoint = false;
             end
+        end
+
+        function target = snapGroundToRoad(target, environment)
+            if ~isfield(environment, 'RoadNetwork') || isempty(environment.RoadNetwork.Segments)
+                target.Heading = RoadNetwork.nearestHeading(target.Heading);
+                target.MotionContext.RoadHeading = target.Heading;
+                target.MotionContext.BaseAltitude = target.Position(3);
+                return;
+            end
+
+            roadInfo = Environment.findNearestRoad(environment, target.Position);
+            laneOffset = target.MotionContext.LaneOffset;
+            snappedXY = RoadGraph.applyLaneOffset(roadInfo.Point(1:2), roadInfo.Heading, laneOffset);
+            terrainHeight = environment.Terrain.Height(snappedXY(1), snappedXY(2));
+
+            target.Position = [snappedXY, terrainHeight + 0.8];
+            target.Heading = roadInfo.Heading;
+            target.MotionContext.RoadHeading = roadInfo.Heading;
+            target.MotionContext.BaseAltitude = terrainHeight + 0.8;
+            target.MotionContext.CurrentRoadSegmentIndex = roadInfo.SegmentIndex;
         end
 
         function limits = resolveAltitudeLimits(profile, environment)

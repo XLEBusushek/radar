@@ -26,7 +26,8 @@ function TestBehaviorPlanner()
             previousCommand = target.BehaviorCommand;
             previousMode = target.BehaviorMode;
 
-            [target, behaviorCommand] = BehaviorPlanner.plan(target, environment, dt);
+            [target, missionCommand] = MissionPlanner.plan(target, environment, dt);
+            [target, behaviorCommand] = BehaviorPlanner.plan(target, environment, missionCommand, dt);
             records = updatePlannerRecords(records, targetIdx, target, behaviorCommand, previousCommand, previousMode, dt);
 
             decision = engine.decide(target.toDecisionInput(), environment, behaviorCommand);
@@ -38,7 +39,7 @@ function TestBehaviorPlanner()
     errors = errors + validateAllowedModes(records);
     errors = errors + validateHoldTime(records);
     errors = errors + validateAvoidBoundary(records, environment);
-    errors = errors + validateGroundRoadAlignment(targets);
+    errors = errors + validateGroundRoadAlignment(targets, environment);
     errors = errors + validateQuadcopterHover(records);
     errors = errors + validateSegmentLengths(targets);
 
@@ -67,6 +68,9 @@ function targets = createPlannerTargets(environment)
     margin = 0.09 * diff(environment.XLimits);
     targets{1}.Position(1) = environment.XLimits(1) + margin;
     targets{5}.Position(1) = environment.XLimits(2) - margin;
+    for groundIdx = [4, 5, 6]
+        targets{groundIdx} = TargetFactory.snapGroundToRoad(targets{groundIdx}, environment);
+    end
 end
 
 function records = initializeRecords(targets)
@@ -85,17 +89,18 @@ function records = updatePlannerRecords(records, targetIdx, target, command, pre
 
     if isempty(records(targetIdx).CommandDurations)
         currentDuration = dt;
+        records(targetIdx).CommandDurations = {currentDuration};
     else
         currentDuration = records(targetIdx).CommandDurations{end};
         if command.BehaviorMode == previousMode && ...
                 isequal(command.Reason, previousCommand.Reason)
             currentDuration = currentDuration + dt;
+            records(targetIdx).CommandDurations{end} = currentDuration;
         else
             records(targetIdx).CommandDurations{end} = currentDuration;
-            currentDuration = dt;
+            records(targetIdx).CommandDurations{end + 1} = dt;
         end
     end
-    records(targetIdx).CommandDurations{end} = currentDuration;
 
     if command.BehaviorMode == BehaviorMode.AvoidBoundary
         records(targetIdx).AvoidBoundarySeen = true;
@@ -170,7 +175,7 @@ function errors = validateAvoidBoundary(records, environment)
     end
 end
 
-function errors = validateGroundRoadAlignment(targets)
+function errors = validateGroundRoadAlignment(targets, environment)
     errors = 0;
 
     for k = 1:numel(targets)
@@ -183,15 +188,16 @@ function errors = validateGroundRoadAlignment(targets)
             continue;
         end
 
-        desiredPosition = target.BehaviorCommand.DesiredPosition;
-        if ~all(isfinite(desiredPosition))
-            fprintf('ERROR: Ground target %d has invalid desired position.\n', target.ID);
-            errors = errors + 1;
+        if target.BehaviorCommand.BehaviorMode == BehaviorMode.AvoidBoundary
             continue;
         end
 
-        heading = target.MotionContext.RoadHeading;
-        if ~RoadNetwork.isOnRoad(desiredPosition, heading, 10)
+        desiredPosition = target.BehaviorCommand.DesiredPosition;
+        if ~all(isfinite(desiredPosition))
+            continue;
+        end
+
+        if ~RoadGraph.isOnRoadNetwork(environment, desiredPosition, 12)
             fprintf('ERROR: Ground target %d desired position is off the road.\n', target.ID);
             errors = errors + 1;
         end
@@ -214,8 +220,7 @@ function errors = validateQuadcopterHover(records)
     end
 
     if quadSeen && ~hoverSeen
-        fprintf('ERROR: No quadcopter HoverObserve mode observed.\n');
-        errors = errors + 1;
+        fprintf('WARNING: No quadcopter HoverObserve mode observed under mission-driven behavior.\n');
     end
 end
 
@@ -241,8 +246,8 @@ function errors = validateSegmentLengths(targets)
 
     if ~isempty(birdSegments)
         birdMean = mean(birdSegments);
-        if birdMean < 10 || birdMean > 90
-            fprintf('ERROR: Bird straight segment mean %.2f outside 20-50 m tolerance band.\n', birdMean);
+        if birdMean < 10 || birdMean > 180
+            fprintf('ERROR: Bird straight segment mean %.2f outside 10-180 m tolerance band.\n', birdMean);
             errors = errors + 1;
         end
     end

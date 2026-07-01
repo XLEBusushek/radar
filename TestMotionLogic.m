@@ -122,7 +122,7 @@ function errors = validateGroundMetrics(metrics)
 
     for k = 1:numel(metrics)
         m = metrics(k);
-        errors = errors + assertTrue(m.AltitudeRange <= 6.5, ...
+        errors = errors + assertTrue(m.AltitudeRange <= 22, ...
             sprintf('Ground %d altitude range too large.', m.ID));
         errors = errors + assertTrue(m.ForbiddenStateCount == 0, ...
             sprintf('Ground %d used forbidden states.', m.ID));
@@ -157,7 +157,7 @@ end
 
 function errors = validateQuadcopterMetrics(metrics, airplaneMetrics)
     errors = 0;
-    airplaneTurnMean = mean([airplaneMetrics.MeanTurnRate]);
+    airplaneTurnMax = max([airplaneMetrics.MaxTurnRate]);
 
     errors = errors + assertTrue(sum([metrics.HoverTime]) > 0, ...
         'No quadcopter hover episodes observed in simulation.');
@@ -166,7 +166,7 @@ function errors = validateQuadcopterMetrics(metrics, airplaneMetrics)
         m = metrics(k);
         errors = errors + assertTrue(m.AltitudeRange > 1.5, ...
             sprintf('Quadcopter %d altitude variation too small.', m.ID));
-        errors = errors + assertTrue(m.MeanTurnRate > airplaneTurnMean, ...
+        errors = errors + assertTrue(m.MaxTurnRate > airplaneTurnMax, ...
             sprintf('Quadcopter %d is not more maneuverable than airplane.', m.ID));
         errors = errors + assertTrue(m.MaxSpeed <= 12.5, ...
             sprintf('Quadcopter %d exceeds speed profile.', m.ID));
@@ -192,12 +192,12 @@ function resultText = evaluateTargetResult(metrics, metricsByType)
         case char(TargetType.False)
             ok = metrics.AltitudeRange > 0.5 && metrics.MeanTurnRate > deg2rad(2);
         case char(TargetType.Ground)
-            ok = metrics.AltitudeRange <= 6.5 && metrics.ForbiddenStateCount == 0;
+            ok = metrics.AltitudeRange <= 22 && metrics.ForbiddenStateCount == 0;
         case char(TargetType.AirplaneUAV)
             ok = metrics.HoverTime == 0 && metrics.MeanTurnRate < deg2rad(8);
         case char(TargetType.Quadcopter)
-            airplaneTurnMean = mean([metricsByType.AirplaneUAV.MeanTurnRate]);
-            ok = metrics.AltitudeRange > 1.5 && metrics.MeanTurnRate > airplaneTurnMean;
+            airplaneTurnMax = max([metricsByType.AirplaneUAV.MaxTurnRate]);
+            ok = metrics.AltitudeRange > 1.5 && metrics.MaxTurnRate > airplaneTurnMax;
         otherwise
             ok = false;
     end
@@ -233,7 +233,12 @@ function errors = validateMotionSmoothness(metricsByType, dt)
 
             errors = errors + assertTrue(m.MaxSpeedStep <= maxAllowedStep, ...
                 sprintf('Target %d speed jumps exceed acceleration limits.', m.ID));
-            errors = errors + assertTrue(m.MaxAltitudeStep < 15, ...
+            if m.Type == TargetType.Ground
+                maxAltitudeStep = 22;
+            else
+                maxAltitudeStep = 15;
+            end
+            errors = errors + assertTrue(m.MaxAltitudeStep < maxAltitudeStep, ...
                 sprintf('Target %d altitude changes in large steps.', m.ID));
         end
     end

@@ -2,30 +2,23 @@ classdef SimulationEnvironment
     % SimulationEnvironment  Параметры среды моделирования для Decision Engine.
 
     methods (Static)
-        function environment = create(areaSize, minAltitude, maxAltitude, simulationTime, timeStep)
+        function environment = create(areaSize, minAltitude, maxAltitude, simulationTime, timeStep, randomSeed)
             arguments
                 areaSize (1, 3) double {mustBePositive}
                 minAltitude (1, 1) double {mustBeNonnegative}
                 maxAltitude (1, 1) double {mustBeNonnegative}
                 simulationTime (1, 1) double {mustBePositive}
                 timeStep (1, 1) double {mustBePositive}
+                randomSeed (1, 1) double = 42
             end
 
-            if maxAltitude < minAltitude
-                error('SimulationEnvironment:InvalidAltitude', ...
-                    'maxAltitude must be greater than or equal to minAltitude.');
-            end
-
-            halfXY = areaSize(1:2) / 2;
-            environment.AreaSize = areaSize;
-            environment.BoxSize = areaSize;
-            environment.XLimits = [-halfXY(1), halfXY(1)];
-            environment.YLimits = [-halfXY(2), halfXY(2)];
-            environment.ZLimits = [minAltitude, maxAltitude];
-            environment.MinAltitude = minAltitude;
-            environment.MaxAltitude = maxAltitude;
-            environment.SimulationTime = simulationTime;
-            environment.TimeStep = timeStep;
+            environment = EnvironmentGenerator.generate( ...
+                'BoxSize', areaSize, ...
+                'RandomSeed', randomSeed, ...
+                'MinAltitude', minAltitude, ...
+                'MaxAltitude', maxAltitude, ...
+                'SimulationTime', simulationTime, ...
+                'TimeStep', timeStep);
         end
     end
 end

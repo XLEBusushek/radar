@@ -1,9 +1,18 @@
-function PlotFlightMap(result)
+function PlotFlightMap(result, plotOptions)
     % PlotFlightMap  3D-карта полётов и дополнительные проекции.
 
     arguments
         result (1, 1) struct
+        plotOptions.showMissionWaypoints (1, 1) logical = true
+        plotOptions.showRoads (1, 1) logical = true
+        plotOptions.showTreeZones (1, 1) logical = true
+        plotOptions.showInspectionZones (1, 1) logical = true
+        plotOptions.showPatrolZones (1, 1) logical = true
+        plotOptions.showBounds (1, 1) logical = true
     end
+
+    showMissionWaypoints = plotOptions.showMissionWaypoints;
+    environment = resolveEnvironment(result);
 
     if ~isfield(result, 'Targets')
         error('PlotFlightMap:InvalidResult', 'Result must contain Targets.');
@@ -21,8 +30,11 @@ function PlotFlightMap(result)
     ax3d = nexttile;
     hold(ax3d, 'on');
     grid(ax3d, 'on');
-    drawSimulationBounds(result, ax3d);
-    [legendHandles, legendLabels] = plotTrajectories(targets, typeOrder, typeColors, ax3d, 'plot3');
+    if plotOptions.showBounds
+        drawSimulationBounds(result, ax3d);
+    end
+    drawEnvironmentLayers(environment, ax3d, plotOptions, 'plot3');
+    [legendHandles, legendLabels] = plotTrajectories(targets, typeOrder, typeColors, ax3d, 'plot3', showMissionWaypoints);
     boundsLegend = plot3(ax3d, nan, nan, nan, '--', 'Color', [0.4, 0.4, 0.4], 'LineWidth', 1.0);
     validLegend = isgraphics(legendHandles);
     legend(ax3d, [legendHandles(validLegend); boundsLegend], ...
@@ -41,7 +53,8 @@ function PlotFlightMap(result)
     axTop = nexttile;
     hold(axTop, 'on');
     grid(axTop, 'on');
-    plotTrajectories(targets, typeOrder, typeColors, axTop, 'xy');
+    drawEnvironmentLayers(environment, axTop, plotOptions, 'xy');
+    plotTrajectories(targets, typeOrder, typeColors, axTop, 'xy', showMissionWaypoints);
     xlabel(axTop, 'X, m');
     ylabel(axTop, 'Y, m');
     title(axTop, 'Top view (X-Y)');
@@ -75,7 +88,10 @@ function timeAxis = buildTimeAxis(targets, result)
     end
 end
 
-function [legendHandles, legendLabels] = plotTrajectories(targets, typeOrder, typeColors, ax, mode)
+function [legendHandles, legendLabels] = plotTrajectories(targets, typeOrder, typeColors, ax, mode, showMissionWaypoints)
+    if nargin < 6
+        showMissionWaypoints = true;
+    end
     legendHandles = gobjects(numel(typeOrder), 1);
     legendLabels = strings(numel(typeOrder), 1);
 
@@ -113,11 +129,17 @@ function [legendHandles, legendLabels] = plotTrajectories(targets, typeOrder, ty
                     scatter3(ax, trajectory(1, 1), trajectory(1, 2), trajectory(1, 3), 36, color, 'o', 'filled');
                     scatter3(ax, trajectory(end, 1), trajectory(end, 2), trajectory(end, 3), 36, color, 's', 'filled');
                     plotTargetWaypoints(typeTargets{k}, ax, color, 'plot3');
+                    if showMissionWaypoints
+                        plotMissionRoute(typeTargets{k}, ax, color, 'plot3');
+                    end
                 case 'xy'
                     plot(ax, trajectory(:, 1), trajectory(:, 2), 'Color', color, 'LineWidth', 1.0);
                     scatter(ax, trajectory(1, 1), trajectory(1, 2), 36, color, 'o', 'filled');
                     scatter(ax, trajectory(end, 1), trajectory(end, 2), 36, color, 's', 'filled');
                     plotTargetWaypoints(typeTargets{k}, ax, color, 'xy');
+                    if showMissionWaypoints
+                        plotMissionRoute(typeTargets{k}, ax, color, 'xy');
+                    end
             end
         end
     end
@@ -137,6 +159,42 @@ function plotTimeSeries(targets, timeAxis, typeColors, ax, seriesType)
         end
 
         plot(ax, timeAxis(1:seriesLength), values, 'Color', color, 'LineWidth', 1.0);
+    end
+end
+
+function plotMissionRoute(target, ax, color, mode)
+    if ~isfield(target, 'MissionCommand') || isempty(target.MissionCommand) || ...
+            ~isfield(target.MissionCommand, 'Status') || ...
+            target.MissionCommand.Status ~= MissionStatus.Executing
+        return;
+    end
+
+    route = target.MissionRoute;
+    if isempty(route) || size(route, 1) < 2 || any(~isfinite(route(:)))
+        return;
+    end
+
+    currentWaypoint = target.MissionCommand.CurrentWaypoint;
+
+    switch mode
+        case 'plot3'
+            plot3(ax, route(:, 1), route(:, 2), route(:, 3), '--', ...
+                'Color', color, 'LineWidth', 1.0);
+            scatter3(ax, route(:, 1), route(:, 2), route(:, 3), ...
+                40, color, 'p', 'LineWidth', 0.8);
+            if all(isfinite(currentWaypoint))
+                scatter3(ax, currentWaypoint(1), currentWaypoint(2), currentWaypoint(3), ...
+                    90, color, 'filled', 'MarkerEdgeColor', 'k', 'LineWidth', 1.2);
+            end
+        case 'xy'
+            plot(ax, route(:, 1), route(:, 2), '--', ...
+                'Color', color, 'LineWidth', 1.0);
+            scatter(ax, route(:, 1), route(:, 2), ...
+                40, color, 'p', 'LineWidth', 0.8);
+            if all(isfinite(currentWaypoint))
+                scatter(ax, currentWaypoint(1), currentWaypoint(2), ...
+                    90, color, 'filled', 'MarkerEdgeColor', 'k', 'LineWidth', 1.2);
+            end
     end
 end
 
@@ -161,6 +219,85 @@ function plotTargetWaypoints(target, ax, color, mode)
         case 'xy'
             scatter(ax, waypoints(:, 1), waypoints(:, 2), ...
                 28, color, 'd', 'LineWidth', 0.8);
+    end
+end
+
+function environment = resolveEnvironment(result)
+    environment = [];
+    if isfield(result, 'Environment') && isstruct(result.Environment)
+        environment = result.Environment;
+    end
+end
+
+function drawEnvironmentLayers(environment, ax, plotOptions, mode)
+    if isempty(environment)
+        return;
+    end
+
+    if plotOptions.showRoads && isfield(environment, 'RoadNetwork')
+        drawRoadNetwork(environment.RoadNetwork, environment.Terrain, ax, mode);
+    end
+
+    if plotOptions.showTreeZones && isfield(environment, 'TreeZones')
+        drawRadialZones(environment.TreeZones, ax, mode, [0.2, 0.55, 0.2], 'Tree zone');
+    end
+
+    if plotOptions.showInspectionZones && isfield(environment, 'InspectionZones')
+        drawRadialZones(environment.InspectionZones, ax, mode, [0.85, 0.45, 0.1], 'Inspection zone');
+    end
+
+    if plotOptions.showPatrolZones && isfield(environment, 'PatrolZones')
+        drawPatrolZones(environment.PatrolZones, environment.Terrain, ax, mode);
+    end
+end
+
+function drawRoadNetwork(roadNetwork, terrain, ax, mode)
+    segments = roadNetwork.Segments;
+    for segmentIdx = 1:size(segments, 1)
+        segment = segments(segmentIdx, :);
+        switch mode
+            case 'plot3'
+                z1 = terrain.Height(segment(1), segment(2));
+                z2 = terrain.Height(segment(3), segment(4));
+                plot3(ax, [segment(1), segment(3)], [segment(2), segment(4)], [z1, z2], ...
+                    '-', 'Color', [0.35, 0.35, 0.35], 'LineWidth', 1.2);
+            case 'xy'
+                plot(ax, [segment(1), segment(3)], [segment(2), segment(4)], ...
+                    '-', 'Color', [0.35, 0.35, 0.35], 'LineWidth', 1.2);
+        end
+    end
+end
+
+function drawRadialZones(zones, ax, mode, color, ~)
+    theta = linspace(0, 2 * pi, 48);
+    for zoneIdx = 1:numel(zones)
+        zone = zones(zoneIdx);
+        circleX = zone.Center(1) + zone.Radius * cos(theta);
+        circleY = zone.Center(2) + zone.Radius * sin(theta);
+        switch mode
+            case 'plot3'
+                plot3(ax, circleX, circleY, zeros(size(circleX)), '--', ...
+                    'Color', color, 'LineWidth', 0.9);
+            case 'xy'
+                plot(ax, circleX, circleY, '--', 'Color', color, 'LineWidth', 0.9);
+        end
+    end
+end
+
+function drawPatrolZones(patrolZones, terrain, ax, mode)
+    color = [0.2, 0.35, 0.75];
+    for zoneIdx = 1:numel(patrolZones)
+        polygon = patrolZones(zoneIdx).Polygon;
+        closedPolygon = [polygon; polygon(1, :)];
+        switch mode
+            case 'plot3'
+                z = terrain.Height(mean(polygon(:, 1)), mean(polygon(:, 2)));
+                plot3(ax, closedPolygon(:, 1), closedPolygon(:, 2), repmat(z, size(closedPolygon, 1), 1), ...
+                    '--', 'Color', color, 'LineWidth', 1.0);
+            case 'xy'
+                plot(ax, closedPolygon(:, 1), closedPolygon(:, 2), '--', ...
+                    'Color', color, 'LineWidth', 1.0);
+        end
     end
 end
 

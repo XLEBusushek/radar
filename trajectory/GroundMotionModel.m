@@ -1,14 +1,15 @@
 classdef GroundMotionModel < MotionModelBase
-    % GroundMotionModel  Движение наземной цели вдоль дорожной сетки.
+    % GroundMotionModel  Движение наземной цели вдоль RoadNetwork Environment.
 
     methods (Static)
         function target = update(target, decision, behaviorCommand, profile, environment, dt)
             headingAtStart = target.Heading;
             speedAtStart = target.Speed;
 
-            target = GroundMotionModel.ensureContext(target);
+            target = GroundMotionModel.ensureContext(target, environment);
             target = MotionStateExecutor.applyState(target, decision.NextState, profile, dt);
-            target = GroundMotionModel.updateRoadHeading(target, decision.NextState, behaviorCommand, environment);
+            target = GroundMotionModel.updateGroundPhase(target, behaviorCommand, environment);
+            target = GroundMotionModel.updateRoadHeading(target, behaviorCommand, environment);
             target = GroundMotionModel.alignToRoad(target, profile, dt);
             target = GroundMotionModel.applyRoadSpeed(target, behaviorCommand, profile, dt);
 
@@ -25,50 +26,91 @@ classdef GroundMotionModel < MotionModelBase
             target.Position(2) = target.Position(2) + displacement * sin(target.Heading);
             target.MotionContext.DistanceOnRoad = target.MotionContext.DistanceOnRoad + displacement;
 
+            target = GroundMotionModel.snapToRoad(target, environment);
             target.Position(1) = min(max(target.Position(1), environment.XLimits(1)), environment.XLimits(2));
             target.Position(2) = min(max(target.Position(2), environment.YLimits(1)), environment.YLimits(2));
         end
     end
 
     methods (Static, Access = private)
-        function target = ensureContext(target)
-            if ~isfield(target.MotionContext, 'BaseAltitude')
-                target.MotionContext.BaseAltitude = target.Position(3);
-                target.MotionContext.RoadHeading = RoadNetwork.nearestHeading(target.Heading);
+        function target = ensureContext(target, environment)
+            if ~isfield(target.MotionContext, 'LaneOffset')
+                stream = RandStream('mt19937ar', 'Seed', round(target.ID));
+                target.MotionContext.LaneOffset = RoadGraph.pickLaneOffset(stream);
+                target.MotionContext.RoadHeading = target.Heading;
                 target.MotionContext.DistanceOnRoad = 0;
-                target.MotionContext.SegmentLength = 80 + 120 * rand();
+                target.MotionContext.GroundPhase = 'Drive';
                 target = GroundMotionModel.initSegmentSpeeds(target);
+            end
+
+            if ~isfield(target.MotionContext, 'GroundPhase')
+                target.MotionContext.GroundPhase = 'Drive';
+            end
+
+            if isfield(environment, 'Terrain') && ~isempty(environment.Terrain)
+                terrainHeight = environment.Terrain.Height(target.Position(1), target.Position(2));
+                target.MotionContext.BaseAltitude = terrainHeight + 0.8;
             end
         end
 
         function target = initSegmentSpeeds(target)
+            stream = RandStream('mt19937ar', 'Seed', round(target.ID + 17));
             context = target.MotionContext;
-            context.CruiseSpeed = 15 + 10 * rand();
-            context.ApproachSpeed = 6 + 6 * rand();
-            context.TurnSpeed = 5 + 5 * rand();
-            context.RoadPhase = 'FollowRoad';
-            context.InTurn = false;
+            context.CruiseSpeed = 15 + 10 * stream.rand();
+            context.ApproachSpeed = 8 + 4 * stream.rand();
+            context.TurnSpeed = 5 + 3 * stream.rand();
+            target.MotionContext = context;
+        end
+
+        function target = updateGroundPhase(target, behaviorCommand, environment)
+            context = target.MotionContext;
+
+            if BehaviorCommand.isActive(behaviorCommand)
+                switch behaviorCommand.BehaviorMode
+                    case BehaviorMode.ApproachIntersection
+                        context.GroundPhase = 'ApproachIntersection';
+                    case BehaviorMode.TurnAtIntersection
+                        context.GroundPhase = 'Turn';
+                    case BehaviorMode.CruiseAfterTurn
+                        context.GroundPhase = 'Accelerate';
+                    case BehaviorMode.FollowRoad
+                        if strcmp(context.GroundPhase, 'Accelerate') && ...
+                                target.Speed >= context.CruiseSpeed - 1.0
+                            context.GroundPhase = 'Drive';
+                        elseif strcmp(context.GroundPhase, 'Turn')
+                            headingError = abs(MotionKinematics.wrapAngle( ...
+                                behaviorCommand.DesiredHeading - target.Heading));
+                            if headingError < deg2rad(5)
+                                context.GroundPhase = 'Accelerate';
+                            end
+                        elseif ~ismember(context.GroundPhase, ...
+                                {'ApproachIntersection', 'Turn', 'Accelerate'})
+                            context.GroundPhase = 'Drive';
+                        end
+                end
+            end
+
             target.MotionContext = context;
         end
 
         function target = applyRoadSpeed(target, behaviorCommand, profile, dt)
             context = target.MotionContext;
-            distRemaining = max(0, context.SegmentLength - context.DistanceOnRoad);
-            headingError = abs(MotionKinematics.wrapAngle( ...
-                context.RoadHeading - target.Heading));
-            context.InTurn = headingError > deg2rad(8);
 
-            if context.InTurn
-                context.RoadPhase = 'TurnAtIntersection';
-                desiredSpeed = context.TurnSpeed;
-            elseif distRemaining < 35
-                context.RoadPhase = 'ApproachIntersection';
-                desiredSpeed = context.ApproachSpeed;
-            elseif isfield(context, 'RoadPhase') && strcmp(context.RoadPhase, 'CruiseAfterTurn')
-                desiredSpeed = context.CruiseSpeed;
-            else
-                context.RoadPhase = 'FollowRoad';
-                desiredSpeed = context.CruiseSpeed;
+            switch context.GroundPhase
+                case 'Drive'
+                    desiredSpeed = context.CruiseSpeed;
+                case 'ApproachIntersection'
+                    desiredSpeed = context.ApproachSpeed;
+                    decelStep = profile.MaxDeceleration * 1.8 * dt;
+                    if target.Speed > desiredSpeed
+                        target.Speed = max(desiredSpeed, target.Speed - decelStep);
+                    end
+                case 'Turn'
+                    desiredSpeed = context.TurnSpeed;
+                case 'Accelerate'
+                    desiredSpeed = context.CruiseSpeed;
+                otherwise
+                    desiredSpeed = context.CruiseSpeed;
             end
 
             if BehaviorCommand.isActive(behaviorCommand) && isfinite(behaviorCommand.DesiredSpeed)
@@ -79,34 +121,14 @@ classdef GroundMotionModel < MotionModelBase
             target.MotionContext = context;
         end
 
-        function target = updateRoadHeading(target, behaviorState, behaviorCommand, environment)
+        function target = updateRoadHeading(target, behaviorCommand, ~)
             context = target.MotionContext;
 
             if BehaviorCommand.isActive(behaviorCommand) && all(isfinite(behaviorCommand.DesiredPosition))
                 deltaXY = behaviorCommand.DesiredPosition(1:2) - target.Position(1:2);
-                if norm(deltaXY) > 5
-                    context.RoadHeading = RoadNetwork.nearestHeading(atan2(deltaXY(2), deltaXY(1)));
+                if norm(deltaXY) > 3
+                    context.RoadHeading = atan2(deltaXY(2), deltaXY(1));
                 end
-            end
-
-            shouldTurn = behaviorState == TargetBehaviorState.TurnLeft || ...
-                behaviorState == TargetBehaviorState.TurnRight || ...
-                context.DistanceOnRoad >= context.SegmentLength || ...
-                GroundMotionModel.isNearBoundary(target.Position, environment);
-
-            if shouldTurn
-                turnLeft = behaviorState == TargetBehaviorState.TurnLeft;
-                if behaviorState ~= TargetBehaviorState.TurnLeft && behaviorState ~= TargetBehaviorState.TurnRight
-                    turnLeft = rand() > 0.5;
-                end
-
-                context.RoadHeading = RoadNetwork.turnHeading(context.RoadHeading, turnLeft);
-                context.DistanceOnRoad = 0;
-                context.SegmentLength = 80 + 120 * rand();
-                context.RoadPhase = 'CruiseAfterTurn';
-                context.ApproachSpeed = 6 + 6 * rand();
-                context.TurnSpeed = 5 + 5 * rand();
-                context.CruiseSpeed = 15 + 10 * rand();
             end
 
             target.MotionContext = context;
@@ -120,31 +142,53 @@ classdef GroundMotionModel < MotionModelBase
 
         function target = applyGroundAltitude(target, behaviorCommand, profile, environment, dt)
             altitudeLimits = TargetFactory.resolveAltitudeLimits(profile, environment);
-            baseAltitude = target.MotionContext.BaseAltitude;
+            terrainHeight = environment.Terrain.Height(target.Position(1), target.Position(2));
+            desiredAltitude = terrainHeight + 0.8;
 
             if BehaviorCommand.isActive(behaviorCommand) && isfinite(behaviorCommand.DesiredAltitude)
                 desiredAltitude = behaviorCommand.DesiredAltitude;
-            else
-                desiredAltitude = baseAltitude;
             end
 
-            desiredAltitude = min(max(desiredAltitude, baseAltitude - 3), baseAltitude + 3);
+            desiredAltitude = min(max(desiredAltitude, terrainHeight + 0.5), terrainHeight + 1.1);
             desiredAltitude = min(max(desiredAltitude, altitudeLimits(1)), altitudeLimits(2));
             altitudeError = desiredAltitude - target.Position(3);
-            altitudeStep = sign(altitudeError) * min(abs(altitudeError), 3 * dt);
+            altitudeStep = sign(altitudeError) * min(abs(altitudeError), 4 * dt);
             target.Position(3) = target.Position(3) + altitudeStep;
-            target.Position(3) = min(max(target.Position(3), altitudeLimits(1)), altitudeLimits(2));
+            heightNoise = 0;
+            if isfield(target.NaturalMotionState, 'RoadHeightNoise')
+                heightNoise = target.NaturalMotionState.RoadHeightNoise;
+            end
+            target.Position(3) = min(max(terrainHeight + 0.8 + heightNoise, terrainHeight + 0.5), ...
+                terrainHeight + 1.1);
+            target.MotionContext.BaseAltitude = terrainHeight + 0.8;
         end
 
-        function tf = isNearBoundary(position, environment)
-            marginRatio = 0.08;
-            xMargin = marginRatio * diff(environment.XLimits);
-            yMargin = marginRatio * diff(environment.YLimits);
+        function target = snapToRoad(target, environment)
+            if ~isfield(environment, 'RoadNetwork')
+                return;
+            end
 
-            tf = (position(1) - environment.XLimits(1)) < xMargin || ...
-                (environment.XLimits(2) - position(1)) < xMargin || ...
-                (position(2) - environment.YLimits(1)) < yMargin || ...
-                (environment.YLimits(2) - position(2)) < yMargin;
+            roadInfo = Environment.findNearestRoad(environment, target.Position);
+            baseLaneOffset = target.MotionContext.LaneOffset;
+            laneOffsetNoise = 0;
+            if isfield(target.NaturalMotionState, 'LaneOffsetNoise')
+                laneOffsetNoise = target.NaturalMotionState.LaneOffsetNoise;
+            end
+            laneOffset = RoadGraph.clampFinalLaneOffset(baseLaneOffset, laneOffsetNoise);
+            heading = roadInfo.Heading;
+            snappedXY = RoadGraph.applyLaneOffset(roadInfo.Point(1:2), heading, laneOffset);
+            blendRatio = 0.92;
+            if roadInfo.Distance > 4
+                blendRatio = 0.96;
+            end
+            target.Position(1:2) = (1 - blendRatio) * target.Position(1:2) + blendRatio * snappedXY;
+            target.MotionContext.CurrentRoadSegmentIndex = roadInfo.SegmentIndex;
+        end
+
+        function tf = isNearIntersection(target, environment)
+            graph = RoadGraph.fromEnvironment(environment);
+            dist = RoadGraph.distanceToNearestIntersection(graph, target.Position);
+            tf = dist < 40;
         end
     end
 end

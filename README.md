@@ -6,9 +6,11 @@
 
 Проект реализует:
 
-- генерацию ложных, наземных и воздушных целей;
+- генерацию среды моделирования (`EnvironmentGenerator`);
+- миссии целей по зонам среды (`Mission Layer`);
+- планирование поведения (`Behavior Layer`);
+- естественные микровозмущения движения (`Natural Motion Layer`);
 - ИИ-модуль выбора поведения (`DecisionEngine`);
-- марковские матрицы переходов между состояниями;
 - физические модели движения для каждого типа цели;
 - экспорт координат, скоростей и ЭПР;
 - 3D-карту траекторий;
@@ -20,48 +22,56 @@
 Симуляция построена по модульному принципу. Каждый этап выполняет одну задачу и не дублирует логику соседних модулей.
 
 ```
-TargetFactory → SimulationEngine → RadarOutputExporter
-                      ↓
-              DecisionEngine (выбор состояния)
-                      ↓
-              TrajectoryGenerator (физика движения)
-                      ↓
-              PhasedTargetAdapter (интеграция с Phased Array Toolbox)
+Environment
+→ Mission Layer
+→ Behavior Layer
+→ Natural Motion Layer
+→ Decision Engine
+→ Trajectory Generator
+→ Radar Output
 ```
 
 **Основные компоненты:**
 
 | Модуль | Назначение |
 |--------|------------|
+| `EnvironmentGenerator` | дороги, рельеф, зоны патруля, инспекции и деревьев |
+| `MissionPlanner` | маршруты и фазы миссий по типам целей |
+| `BehaviorPlanner` | целевые команды движения из миссии и профиля |
+| `NaturalMotionLayer` | плавные микровозмущения курса, скорости, высоты и дрейфа |
+| `DecisionEngine` | выбор следующего состояния поведения (марковский процесс) |
+| `TrajectoryGenerator` | исполнение решения и обновление кинематики |
 | `RadarTargetModel` | хранение состояния цели и истории движения |
 | `TargetProfileRegistry` | физические ограничения по типам целей |
-| `TargetFactory` | создание целей со случайными параметрами в допустимых диапазонах |
-| `DecisionEngine` | выбор следующего состояния поведения на основе матриц переходов |
-| `TrajectoryGenerator` | исполнение решения и обновление координат, скорости, курса |
+| `TargetFactory` | создание целей со случайными параметрами |
 | `SimulationEngine` | полный цикл симуляции и формирование выходных кадров |
 | `RadarOutputExporter` | экспорт данных в структуру, таблицу, CSV и MAT |
 | `PhasedTargetAdapter` | синхронизация с `phased.Platform` и `phased.RadarTarget` |
 
-Поведение цели выбирается **марковским процессом**: для каждого типа цели задана матрица переходов, вероятности корректируются с учётом среды и индивидуальных коэффициентов, после чего выполняется случайная выборка следующего состояния.
+Поведение цели выбирается **марковским процессом**: для каждого типа цели задана матрица переходов, вероятности корректируются с учётом среды, миссии и индивидуальных коэффициентов, после чего выполняется случайная выборка следующего состояния.
 
 ## Структура папок
 
 ```
 radar/
-├── enums/                  % TargetType, TargetBehaviorState
+├── enums/                  % TargetType, TargetBehaviorState, MissionType, ...
+├── environment/            % Environment, EnvironmentGenerator, RoadGraph, Terrain
+├── mission/                % MissionPlanner, MissionStateMachine, route builders
+├── behavior/               % BehaviorPlanner, BehaviorCommand
+├── motion/                 % NaturalMotionLayer, SmoothNoiseProcess
 ├── models/                 % RadarTargetModel, BehaviorCoefficients
-├── profiles/               % TargetProfile, TargetProfileRegistry
+├── profiles/               % TargetProfile, NaturalMotionProfileRegistry
 ├── factory/                % TargetFactory
 ├── decision/               % DecisionEngine, ProbabilityModifiers, матрицы переходов
 │   └── matrices/           % Bird, Ground, Airplane, Quad transition matrices
 ├── trajectory/             % TrajectoryGenerator и модели движения
-├── simulation/             % SimulationEngine, PlotFlightMap, PlotSimulationResult
+├── simulation/             % SimulationEngine, PlotFlightMap
 ├── integration/            % PhasedTargetAdapter
 ├── export/                 % RadarOutputExporter
 ├── examples/               % демонстрационные скрипты
 ├── main.m                  % финальный сценарий запуска
 ├── setupRadarPaths.m       % добавление путей проекта
-├── RunAllTests.m           % запуск всех тестов
+├── RunAllTests.m           % запуск всех тестов по категориям
 └── Test*.m                 % тесты валидации модулей
 ```
 
@@ -71,6 +81,7 @@ radar/
 
 | Параметр | Описание |
 |----------|----------|
+| `demoMode` | режим демонстрации: `"small"` (4 цели), `"medium"`, `"full"` |
 | `numFalse` | количество ложных целей (птиц) |
 | `numGround` | количество наземных целей |
 | `numAir` | количество воздушных целей (распределяется 50/50 между `AirplaneUAV` и `Quadcopter`) |
@@ -79,6 +90,16 @@ radar/
 | `duration` | длительность симуляции, с |
 | `dt` | шаг моделирования, с |
 | `randomSeed` | зерно генератора случайных чисел |
+
+По умолчанию `demoMode = "small"`. Параметры, заданные до запуска `main`, переопределяют пресет режима.
+
+### Пресеты `demoMode`
+
+| Режим | Цели | `boxSize` | `duration`, с |
+|-------|------|-----------|---------------|
+| `small` | 1 + 1 + 2 = 4 | `[1000, 1000, 300]` | 300 |
+| `medium` | 2 + 2 + 4 = 8 | `[2000, 2000, 400]` | 300 |
+| `full` | 3 + 3 + 6 = 12 | `[4000, 4000, 500]` | 360 |
 
 ### Параметры `SimulationEngine` (`config`)
 
@@ -152,18 +173,24 @@ addpath('c:/path/to/radar');
 main
 ```
 
+### Режимы демонстрации
+
+```matlab
+addpath('c:/path/to/radar');
+demoMode = "small";   % 4 цели (по умолчанию)
+demoMode = "medium";  % 8 целей
+demoMode = "full";    % 12 целей
+main
+```
+
 ### Настройка параметров перед запуском
 
 ```matlab
 addpath('c:/path/to/radar');
+demoMode = "medium";
 numFalse = 3;
-numGround = 3;
-numAir = 4;
-boxSize = [1000, 1000, 300];
-outputPeriod = 5;
-duration = 120;
-dt = 1;
-randomSeed = 42;
+boxSize = [1500, 1500, 350];
+duration = 180;
 main
 ```
 
@@ -196,6 +223,81 @@ addpath('c:/path/to/radar');
 RunAllTests
 ```
 
+Вывод сгруппирован по категориям:
+
+```
+[Core]
+TestTargetProfiles PASSED
+TestDecisionEngine PASSED
+...
+
+[Environment]
+TestEnvironmentGenerator PASSED
+...
+
+[Mission]
+TestMissionPlannerBase PASSED
+...
+
+[Target behavior]
+TestBehaviorPlanner PASSED
+...
+
+[Export / visualization]
+TestRadarOutputExporter PASSED
+...
+
+ALL TESTS PASSED
+```
+
+### Категории тестов
+
+#### Core tests
+
+| Тест | Назначение |
+|------|------------|
+| `TestTargetProfiles` | профили и диапазоны параметров целей |
+| `TestDecisionEngine` | марковский выбор состояний |
+| `TestTrajectoryGenerator` | модели движения и кинематика |
+| `TestSimulationEngine` | полный цикл симуляции |
+| `TestNaturalMotionBase` | базовая инфраструктура Natural Motion |
+| `TestMotionLogic` | дистанция, скорость, высота, повороты |
+| `TestSpeedSmoothness` | плавность изменения скорости |
+
+#### Environment tests
+
+| Тест | Назначение |
+|------|------------|
+| `TestEnvironmentGenerator` | генерация среды и зон |
+| `TestGroundMissionEnvironment` | миссии Ground по дорогам |
+| `TestAirplaneMissionEnvironment` | патруль AirplaneUAV |
+| `TestQuadcopterMissionEnvironment` | инспекция Quadcopter |
+| `TestBirdMissionEnvironment` | маршруты Bird между TreeZones |
+
+#### Mission tests
+
+| Тест | Назначение |
+|------|------------|
+| `TestMissionPlannerBase` | создание и смена миссий |
+| `TestMissionStateMachine` | фазы миссий и waypoints |
+
+#### Target behavior tests
+
+| Тест | Назначение |
+|------|------------|
+| `TestBehaviorPlanner` | команды поведения по типам целей |
+| `TestGroundNaturalMotion` | Natural Motion для Ground |
+| `TestAirplaneNaturalMotion` | Natural Motion для AirplaneUAV |
+
+#### Export / visualization tests
+
+| Тест | Назначение |
+|------|------------|
+| `TestRadarOutputExporter` | структура, CSV и MAT экспорт |
+| `TestPhasedTargetAdapter` | интеграция с Phased Array Toolbox |
+| `TestSmallScenarioVisualLogic` | визуальная логика короткого сценария |
+| `TestMainScenario` | end-to-end запуск `main.m` |
+
 ### Отдельные тесты
 
 ```matlab
@@ -203,10 +305,8 @@ setupRadarPaths();
 
 TestTargetProfiles
 TestDecisionEngine
-TestTrajectoryGenerator
-TestSimulationEngine
-TestRadarOutputExporter
-TestPhasedTargetAdapter      % требует Phased Array Toolbox
+TestEnvironmentGenerator
+TestMissionStateMachine
 TestMainScenario
 ```
 

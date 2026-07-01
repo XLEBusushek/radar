@@ -2,7 +2,11 @@ classdef MotionBehaviorGuidance
     % MotionBehaviorGuidance  Мягкое следование целевым параметрам BehaviorCommand.
 
     methods (Static)
-        function target = apply(target, behaviorCommand, profile, environment, dt)
+        function target = apply(target, behaviorCommand, profile, environment, dt, applySpeed)
+            if nargin < 6
+                applySpeed = true;
+            end
+
             if ~BehaviorCommand.isActive(behaviorCommand)
                 return;
             end
@@ -22,7 +26,7 @@ classdef MotionBehaviorGuidance
                     target, behaviorCommand, profile, environment, dt, maxPitchStep);
             end
 
-            if isfinite(behaviorCommand.DesiredSpeed)
+            if applySpeed && isfinite(behaviorCommand.DesiredSpeed)
                 desiredSpeed = MotionBehaviorGuidance.resolveDesiredSpeed( ...
                     target, behaviorCommand, profile, dt);
                 target = MotionKinematics.applySmoothSpeedToTarget( ...

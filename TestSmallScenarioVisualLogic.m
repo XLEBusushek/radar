@@ -78,7 +78,7 @@ function errors = validatePerTypeBehavior(result, dt)
                     fprintf('ERROR: Ground target %d speed not smooth.\n', target.ID);
                     errors = errors + 1;
                 end
-                if ~RoadNetwork.isOnRoad(target.Position, target.Heading, 15)
+                if ~RoadGraph.isOnRoadNetwork(result.Environment, target.Position, 10)
                     fprintf('ERROR: Ground target %d left road network.\n', target.ID);
                     errors = errors + 1;
                 end

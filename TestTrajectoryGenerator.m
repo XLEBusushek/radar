@@ -44,7 +44,8 @@ function TestTrajectoryGenerator()
             prevHeading = target.Heading;
             prevSpeed = target.Speed;
 
-            [target, behaviorCommand] = BehaviorPlanner.plan(target, environment, dt);
+            [target, missionCommand] = MissionPlanner.plan(target, environment, dt);
+            [target, behaviorCommand] = BehaviorPlanner.plan(target, environment, missionCommand, dt);
             decision = engine.decide(target.toDecisionInput(), environment, behaviorCommand);
             target = TrajectoryGenerator.updateMotion(target, decision, behaviorCommand, environment, dt);
 

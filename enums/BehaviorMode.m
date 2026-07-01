@@ -6,6 +6,8 @@ classdef BehaviorMode
         TurnToWaypoint
         ChangeAltitude
         HoverObserve
+        MoveToPoint
+        AltitudeAdjust
         FollowRoad
         ApproachIntersection
         TurnAtIntersection

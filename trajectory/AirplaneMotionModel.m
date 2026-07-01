@@ -13,13 +13,7 @@ classdef AirplaneMotionModel < MotionModelBase
 
             maxTurnStep = deg2rad(profile.MaxTurnRate) * dt;
             maxPitchStep = deg2rad(profile.MaxPitchRate) * dt;
-
-            if decision.NextState == TargetBehaviorState.TurnLeft || ...
-                    decision.NextState == TargetBehaviorState.TurnRight
-                turnScale = 0.85;
-            else
-                turnScale = 0.25;
-            end
+            turnScale = AirplaneMotionModel.resolveTurnScale(decision.NextState, behaviorCommand);
 
             target.Heading = MotionKinematics.rotateToward( ...
                 headingAtStart, target.Heading, maxTurnStep * turnScale);
@@ -37,6 +31,33 @@ classdef AirplaneMotionModel < MotionModelBase
     end
 
     methods (Static, Access = private)
+        function turnScale = resolveTurnScale(behaviorState, behaviorCommand)
+            isPatrolMission = BehaviorCommand.isActive(behaviorCommand) && ...
+                (strcmp(behaviorCommand.Reason, 'Mission: Airplane mission wide turn') || ...
+                strcmp(behaviorCommand.Reason, 'Mission: Airplane mission long cruise'));
+
+            if isPatrolMission
+                if behaviorCommand.BehaviorMode == BehaviorMode.WideTurn
+                    turnScale = 1.0;
+                else
+                    turnScale = 0.9;
+                end
+
+                if behaviorState == TargetBehaviorState.TurnLeft || ...
+                        behaviorState == TargetBehaviorState.TurnRight
+                    turnScale = max(turnScale, 0.85);
+                end
+                return;
+            end
+
+            if behaviorState == TargetBehaviorState.TurnLeft || ...
+                    behaviorState == TargetBehaviorState.TurnRight
+                turnScale = 0.85;
+            else
+                turnScale = 0.25;
+            end
+        end
+
         function target = applyInertialFlight(target, behaviorState, profile, dt)
             maxPitchStep = deg2rad(profile.MaxPitchRate) * dt;
 

@@ -184,9 +184,52 @@ classdef ProbabilityModifiers
                 probabilities(idx.FlyStraight) = probabilities(idx.FlyStraight) * 1.2;
             end
 
+            if behaviorCommand.BehaviorMode == BehaviorMode.MoveToPoint
+                probabilities(idx.FlyStraight) = probabilities(idx.FlyStraight) * 1.3;
+                probabilities(idx.Hover) = probabilities(idx.Hover) * 0.4;
+            end
+
+            if behaviorCommand.BehaviorMode == BehaviorMode.AltitudeAdjust
+                altitudeError = behaviorCommand.DesiredAltitude - target.Position(3);
+                if altitudeError > 3
+                    probabilities(idx.Climb) = probabilities(idx.Climb) * 2.5;
+                elseif altitudeError < -3
+                    probabilities(idx.Descend) = probabilities(idx.Descend) * 2.5;
+                end
+                probabilities(idx.Hover) = probabilities(idx.Hover) * 0.5;
+            end
+
             if behaviorCommand.BehaviorMode == BehaviorMode.HideLowAltitude
-                probabilities(idx.Hidden) = probabilities(idx.Hidden) * 2.5;
-                probabilities(idx.Descend) = probabilities(idx.Descend) * 1.5;
+                hiddenTarget = 0.02;
+                if context.Target.Position(3) < 12
+                    hiddenTarget = 0.38;
+                end
+
+                zoneInfo = Environment.findNearestTreeZone(context.Environment, context.Target.Position);
+                if zoneInfo.Index > 0 && zoneInfo.Distance <= zoneInfo.Zone.Radius * 1.3
+                    hiddenTarget = min(0.55, hiddenTarget + 0.15);
+                end
+
+                nonHiddenMass = sum(probabilities) - probabilities(idx.Hidden);
+                scaleFactor = (1 - hiddenTarget) / max(nonHiddenMass, 1e-9);
+                probabilities = probabilities * scaleFactor;
+                probabilities(idx.Hidden) = hiddenTarget;
+                probabilities(idx.Descend) = probabilities(idx.Descend) * 1.2;
+            elseif behaviorCommand.BehaviorMode ~= BehaviorMode.HideLowAltitude && ...
+                    contains(behaviorCommand.Reason, 'Mission:') && ...
+                    strcmp(char(context.Target.Type), char(TargetType.False))
+                zoneInfo = Environment.findNearestTreeZone(context.Environment, context.Target.Position);
+                nearTree = zoneInfo.Index > 0 && ...
+                    zoneInfo.Distance <= zoneInfo.Zone.Radius * 1.3;
+
+                if context.Target.Position(3) < 12
+                    probabilities(idx.Hidden) = probabilities(idx.Hidden) * 2.2;
+                    if nearTree
+                        probabilities(idx.Hidden) = probabilities(idx.Hidden) * 1.65;
+                    end
+                else
+                    probabilities(idx.Hidden) = probabilities(idx.Hidden) * 0.04;
+                end
             end
 
             if behaviorCommand.BehaviorMode == BehaviorMode.AvoidBoundary

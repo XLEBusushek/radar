@@ -12,23 +12,35 @@ classdef QuadcopterMotionModel < MotionModelBase
             target.Speed = speedAtStart;
             target = QuadcopterMotionModel.applyDesiredDynamics( ...
                 target, decision.NextState, behaviorCommand, profile, dt);
-            target = MotionBehaviorGuidance.apply(target, behaviorCommand, profile, environment, dt);
+            target = MotionBehaviorGuidance.apply(target, behaviorCommand, profile, environment, dt, false);
 
             maxTurnStep = deg2rad(profile.MaxTurnRate) * dt;
             maxPitchStep = deg2rad(profile.MaxPitchRate) * dt;
 
-            target.Heading = MotionKinematics.rotateToward( ...
-                headingAtStart, target.Heading, maxTurnStep);
             target.Pitch = MotionKinematics.rotateToward( ...
                 pitchAtStart, target.Pitch, maxPitchStep);
-
             target = MotionKinematics.applyBoundarySteering(target, profile, environment, dt);
-            target = MotionKinematics.enforceRateLimits(target, headingAtStart, speedAtStart, profile, dt);
+            target.Heading = MotionKinematics.rotateToward( ...
+                headingAtStart, target.Heading, maxTurnStep);
             target = MotionKinematics.clampSpeed(target, profile, decision.NextState, false);
-            target = MotionKinematics.enforceRateLimits(target, headingAtStart, speedAtStart, profile, dt);
+
+            if BehaviorCommand.isActive(behaviorCommand) && ...
+                    behaviorCommand.BehaviorMode == BehaviorMode.HoverObserve
+                target.Speed = min(target.Speed, max(1.0, behaviorCommand.DesiredSpeed + 0.05));
+            end
+
+            target = QuadcopterMotionModel.enforceSpeedStep(target, speedAtStart, profile, dt);
             target = MotionKinematics.enforceAltitudeProfile(target, profile, environment);
+            positionBefore = target.Position;
             target = MotionKinematics.updateVelocity(target);
             target = MotionKinematics.integratePosition(target, environment, dt);
+            if BehaviorCommand.isActive(behaviorCommand) && ...
+                    behaviorCommand.BehaviorMode == BehaviorMode.HoverObserve
+                target.Position(1:2) = positionBefore(1:2);
+                target = QuadcopterMotionModel.applyHoverGuidance( ...
+                    target, behaviorCommand, dt);
+                target = MotionKinematics.updateVelocity(target);
+            end
             target = MotionKinematics.enforceAltitudeProfile(target, profile, environment);
         end
     end
@@ -47,10 +59,7 @@ classdef QuadcopterMotionModel < MotionModelBase
             maxDecelStep = profile.MaxDeceleration * dt;
 
             if BehaviorCommand.isActive(behaviorCommand) && isfinite(behaviorCommand.DesiredSpeed)
-                if ~isfield(context, 'CommandDesiredSpeed') || ...
-                        context.CommandDesiredSpeed ~= behaviorCommand.DesiredSpeed
-                    context.CommandDesiredSpeed = behaviorCommand.DesiredSpeed;
-                end
+                context.CommandDesiredSpeed = behaviorCommand.DesiredSpeed;
             end
 
             switch behaviorState
@@ -68,7 +77,14 @@ classdef QuadcopterMotionModel < MotionModelBase
                     context.DesiredSpeed = max(profile.CruiseSpeedMin, context.DesiredSpeed - 0.5 * maxDecelStep);
                 otherwise
                     if isfield(context, 'CommandDesiredSpeed')
-                        context.DesiredSpeed = context.CommandDesiredSpeed;
+                        commandSpeed = context.CommandDesiredSpeed;
+                        if commandSpeed >= target.Speed
+                            context.DesiredSpeed = MotionKinematics.moveToward( ...
+                                target.Speed, commandSpeed, maxAccelStep);
+                        else
+                            context.DesiredSpeed = MotionKinematics.moveToward( ...
+                                target.Speed, commandSpeed, maxDecelStep);
+                        end
                     else
                         cruiseTarget = min(profile.SpeedMax, max(profile.CruiseSpeedMin, target.Speed));
                         context.DesiredSpeed = MotionKinematics.moveToward( ...
@@ -78,11 +94,39 @@ classdef QuadcopterMotionModel < MotionModelBase
 
             if BehaviorCommand.isActive(behaviorCommand) && ...
                     behaviorCommand.BehaviorMode == BehaviorMode.HoverObserve
-                context.DesiredSpeed = min(1.0, max(profile.HoverSpeedMin, behaviorCommand.DesiredSpeed));
+                hoverTarget = min(1.0, max(profile.HoverSpeedMin, behaviorCommand.DesiredSpeed));
+                context.DesiredSpeed = MotionKinematics.moveToward( ...
+                    target.Speed, hoverTarget, maxDecelStep);
             end
 
             target.Speed = MotionKinematics.applySmoothSpeed(target.Speed, context.DesiredSpeed, profile, dt);
             target.MotionContext = context;
+        end
+
+        function target = enforceSpeedStep(target, speedAtStart, profile, dt)
+            maxUp = profile.MaxAcceleration * dt;
+            maxDown = profile.MaxDeceleration * dt;
+            speedDelta = target.Speed - speedAtStart;
+            speedDelta = max(-maxDown, min(maxUp, speedDelta));
+            target.Speed = speedAtStart + speedDelta;
+        end
+
+        function target = applyHoverGuidance(target, behaviorCommand, dt)
+            if all(isfinite(behaviorCommand.DesiredPosition))
+                deltaXY = behaviorCommand.DesiredPosition(1:2) - target.Position(1:2);
+                maxStep = 0.6 * dt;
+                stepNorm = norm(deltaXY);
+                if stepNorm > 1e-6
+                    step = min(maxStep, stepNorm);
+                    target.Position(1:2) = target.Position(1:2) + deltaXY / stepNorm * step;
+                end
+            end
+
+            if isfinite(behaviorCommand.DesiredAltitude)
+                altitudeError = behaviorCommand.DesiredAltitude - target.Position(3);
+                altitudeStep = sign(altitudeError) * min(abs(altitudeError), 0.35 * dt);
+                target.Position(3) = target.Position(3) + altitudeStep;
+            end
         end
     end
 end

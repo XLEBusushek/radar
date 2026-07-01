@@ -144,6 +144,14 @@ function errors = validateTable(tableData)
         'DesiredSpeed'
         'DesiredAltitude'
         'BehaviorReason'
+        'MissionType'
+        'MissionWaypointIndex'
+        'MissionReason'
+        'MissionStatus'
+        'MissionProgress'
+        'MissionDistanceToWaypoint'
+        'MissionCompletionReason'
+        'MissionCancelReason'
     };
 
     for columnIdx = 1:numel(requiredColumns)

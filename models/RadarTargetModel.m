@@ -41,6 +41,14 @@ classdef RadarTargetModel
         BehaviorCommandStartPosition (1, 3) double = [nan, nan, nan]
         BehaviorCommandDistance double = 0
         HistoryWaypoint               % История waypoints, N×3
+        MissionCommand                % Активная миссионная команда
+        MissionType                   % Текущий тип миссии
+        MissionTime double = 0        % Время в текущей миссии, с
+        MissionStartTime double = 0   % Время начала миссии
+        MissionRoute                    % Текущий маршрут миссии, N×3
+        MissionWaypointIndex double = 1
+        MissionHistory                % История миссий
+        NaturalMotionState            % Состояние плавного шума Natural Motion
     end
 
     methods
@@ -89,6 +97,14 @@ classdef RadarTargetModel
             obj.BehaviorCommandStartPosition = [nan, nan, nan];
             obj.BehaviorCommandDistance = 0;
             obj.HistoryWaypoint = zeros(0, 3);
+            obj.MissionCommand = MissionCommand.empty();
+            obj.MissionType = MissionType.Idle;
+            obj.MissionTime = 0;
+            obj.MissionStartTime = 0;
+            obj.MissionRoute = zeros(0, 3);
+            obj.MissionWaypointIndex = 1;
+            obj.MissionHistory = RadarTargetModel.emptyMissionHistoryRow();
+            obj.NaturalMotionState = RadarTargetModel.emptyNaturalMotionState();
 
             obj = obj.updateVelocityFromKinematics();
             obj = obj.saveHistory();
@@ -212,6 +228,106 @@ classdef RadarTargetModel
             obj.DistanceSinceLastBehaviorChange = obj.DistanceSinceLastBehaviorChange + distance;
             obj.BehaviorCommandDistance = obj.BehaviorCommandDistance + distance;
         end
+
+        function obj = tickMissionTime(obj, dt)
+            obj.MissionTime = obj.MissionTime + dt;
+        end
+
+        function tf = isMissionActive(obj)
+            if ~MissionCommand.isActive(obj.MissionCommand)
+                tf = false;
+                return;
+            end
+
+            if MissionStateMachine.isTerminal(obj.MissionCommand)
+                tf = obj.MissionTime < obj.MissionCommand.MissionHoldTime;
+                return;
+            end
+
+            tf = true;
+        end
+
+        function obj = setMissionCommand(obj, command)
+            if ~MissionCommand.isActive(command) && command.MissionHoldTime <= 0
+                return;
+            end
+
+            isNewMission = ~MissionCommand.isActive(obj.MissionCommand) || ...
+                command.MissionPriority > obj.MissionCommand.MissionPriority || ...
+                (MissionStateMachine.isTerminal(obj.MissionCommand) && ...
+                obj.MissionTime >= obj.MissionCommand.MissionHoldTime) || ...
+                (command.MissionType ~= obj.MissionCommand.MissionType && ...
+                command.MissionPriority >= obj.MissionCommand.MissionPriority);
+
+            if isNewMission
+                obj.MissionTime = 0;
+                obj.MissionStartTime = 0;
+                obj.MissionWaypointIndex = command.CurrentWaypointIndex;
+                command.Status = MissionStatus.Created;
+                command.PreviousStatus = MissionStatus.Created;
+                command.StatusStartTime = 0;
+                command.StatusTime = 0;
+                obj = obj.appendMissionHistory(command);
+            end
+
+            obj.MissionCommand = command;
+            obj.MissionType = command.MissionType;
+            obj.MissionRoute = command.MissionRoute;
+            obj.MissionWaypointIndex = command.CurrentWaypointIndex;
+
+            if obj.Type == TargetType.Ground && isfield(command, 'GroundLaneOffset')
+                obj.MotionContext.LaneOffset = command.GroundLaneOffset;
+                obj.MotionContext.CurrentRoadSegmentIndex = command.CurrentRoadSegmentIndex;
+                obj.MotionContext.DestinationNodeIndex = command.DestinationNodeIndex;
+                obj.MotionContext.GroundPhase = 'Drive';
+                obj.MotionContext.DistanceOnRoad = 0;
+                if isfield(command, 'RoadNodePath')
+                    obj.MotionContext.RoadNodePath = command.RoadNodePath;
+                end
+                if size(command.MissionRoute, 1) >= 2
+                    routeDelta = command.MissionRoute(2, 1:2) - command.MissionRoute(1, 1:2);
+                    if norm(routeDelta) > 1
+                        routeHeading = atan2(routeDelta(2), routeDelta(1));
+                        obj.MotionContext.RoadHeading = routeHeading;
+                    end
+                end
+            end
+
+            if obj.Type == TargetType.AirplaneUAV && command.MissionType == MissionType.PatrolRoute
+                if size(command.MissionRoute, 1) >= 1
+                    routeDelta = command.MissionRoute(1, 1:2) - obj.Position(1:2);
+                    if norm(routeDelta) > 1
+                        routeHeading = atan2(routeDelta(2), routeDelta(1));
+                        obj.MotionContext.RoadHeading = routeHeading;
+                    end
+                end
+                if isfield(command, 'TurnStartDistance')
+                    obj.MotionContext.TurnStartDistance = command.TurnStartDistance;
+                end
+            end
+        end
+
+        function obj = updateMissionCommand(obj, command)
+            obj.MissionCommand = command;
+            obj.MissionWaypointIndex = command.CurrentWaypointIndex;
+            if command.CurrentWaypointIndex <= size(command.MissionRoute, 1)
+                obj.MissionRoute = command.MissionRoute;
+            end
+        end
+
+        function obj = appendMissionHistory(obj, command)
+            row = struct( ...
+                'Time', obj.MissionTime, ...
+                'MissionType', command.MissionType, ...
+                'Status', command.Status, ...
+                'CurrentWaypointIndex', command.CurrentWaypointIndex, ...
+                'Progress', command.Progress, ...
+                'DistanceToCurrentWaypoint', command.DistanceToCurrentWaypoint, ...
+                'CompletionReason', string(command.CompletionReason), ...
+                'CancelReason', string(command.CancelReason), ...
+                'MissionReason', string(command.MissionReason));
+            obj.MissionHistory = [obj.MissionHistory; row];
+        end
     end
 
     methods (Static)
@@ -231,6 +347,33 @@ classdef RadarTargetModel
     end
 
     methods (Static, Access = private)
+        function row = emptyMissionHistoryRow()
+            row = struct( ...
+                'Time', {}, ...
+                'MissionType', {}, ...
+                'Status', {}, ...
+                'CurrentWaypointIndex', {}, ...
+                'Progress', {}, ...
+                'DistanceToCurrentWaypoint', {}, ...
+                'CompletionReason', {}, ...
+                'CancelReason', {}, ...
+                'MissionReason', {});
+        end
+
+        function state = emptyNaturalMotionState()
+            state = struct( ...
+                'HeadingNoise', 0, ...
+                'SpeedNoise', 0, ...
+                'AltitudeNoise', 0, ...
+                'PositionNoise', [0, 0, 0], ...
+                'LaneOffsetNoise', 0, ...
+                'RoadHeightNoise', 0, ...
+                'HoverDrift', [0, 0], ...
+                'WindDrift', [0, 0], ...
+                'LastUpdateTime', 0, ...
+                'NoiseStream', []);
+        end
+
         function id = generateID()
             id = RadarTargetModel.manageIdCounter('next');
         end

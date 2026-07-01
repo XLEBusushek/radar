@@ -1,22 +1,42 @@
-% RunAllTests  Запуск всех тестов проекта (ТЗ №8).
+% RunAllTests  Запуск всех тестов проекта по категориям (ТЗ №15.1).
 
 function RunAllTests()
     projectRoot = fileparts(mfilename('fullpath'));
     addpath(projectRoot);
     setupRadarPaths();
 
-    testPlan = {
-        'TestTargetProfiles', false
-        'TestDecisionEngine', false
-        'TestBehaviorPlanner', false
-        'TestTrajectoryGenerator', false
-        'TestSimulationEngine', false
-        'TestRadarOutputExporter', false
-        'TestMotionLogic', false
-        'TestSpeedSmoothness', false
-        'TestSmallScenarioVisualLogic', false
-        'TestPhasedTargetAdapter', true
-        'TestMainScenario', false
+    testCategories = {
+        'Core', {
+            'TestTargetProfiles', false
+            'TestDecisionEngine', false
+            'TestTrajectoryGenerator', false
+            'TestSimulationEngine', false
+            'TestNaturalMotionBase', false
+            'TestMotionLogic', false
+            'TestSpeedSmoothness', false
+        }
+        'Environment', {
+            'TestEnvironmentGenerator', false
+            'TestGroundMissionEnvironment', false
+            'TestAirplaneMissionEnvironment', false
+            'TestQuadcopterMissionEnvironment', false
+            'TestBirdMissionEnvironment', false
+        }
+        'Mission', {
+            'TestMissionPlannerBase', false
+            'TestMissionStateMachine', false
+        }
+        'Target behavior', {
+            'TestBehaviorPlanner', false
+            'TestGroundNaturalMotion', false
+            'TestAirplaneNaturalMotion', false
+        }
+        'Export / visualization', {
+            'TestRadarOutputExporter', false
+            'TestPhasedTargetAdapter', true
+            'TestSmallScenarioVisualLogic', false
+            'TestMainScenario', false
+        }
     };
 
     fprintf('=== Running All Tests ===\n\n');
@@ -25,32 +45,39 @@ function RunAllTests()
     skippedCount = 0;
     passedCount = 0;
 
-    for testIdx = 1:size(testPlan, 1)
-        testName = testPlan{testIdx, 1};
-        allowSkip = testPlan{testIdx, 2};
+    for categoryIdx = 1:size(testCategories, 1)
+        categoryName = testCategories{categoryIdx, 1};
+        categoryTests = testCategories{categoryIdx, 2};
 
-        fprintf('[%d/%d] %s\n', testIdx, size(testPlan, 1), testName);
+        fprintf('[%s]\n', categoryName);
 
-        [status, outputText] = runSingleTest(testName);
+        for testIdx = 1:size(categoryTests, 1)
+            testName = categoryTests{testIdx, 1};
+            allowSkip = categoryTests{testIdx, 2}; %#ok<NASGU>
 
-        if ~isempty(outputText)
-            fprintf('%s', outputText);
-            if ~endsWith(strtrim(outputText), newline)
-                fprintf('\n');
+            [status, outputText] = runSingleTest(testName);
+
+            if ~isempty(outputText)
+                fprintf('%s', outputText);
+                if ~endsWith(strtrim(outputText), newline)
+                    fprintf('\n');
+                end
+            end
+
+            switch status
+                case 'passed'
+                    passedCount = passedCount + 1;
+                    fprintf('%s PASSED\n', testName);
+                case 'skipped'
+                    skippedCount = skippedCount + 1;
+                    fprintf('%s SKIPPED\n', testName);
+                otherwise
+                    failedCount = failedCount + 1;
+                    fprintf('%s FAILED\n', testName);
             end
         end
 
-        switch status
-            case 'passed'
-                passedCount = passedCount + 1;
-                fprintf('  -> PASSED\n\n');
-            case 'skipped'
-                skippedCount = skippedCount + 1;
-                fprintf('  -> SKIPPED\n\n');
-            otherwise
-                failedCount = failedCount + 1;
-                fprintf('  -> FAILED\n\n');
-        end
+        fprintf('\n');
     end
 
     fprintf('=== Test Summary ===\n');
