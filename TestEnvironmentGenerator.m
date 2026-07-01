@@ -9,7 +9,7 @@ function TestEnvironmentGenerator()
 
     fprintf('=== Environment Generator Validation ===\n\n');
 
-    boxSize = [2000, 2000, 400];
+    boxSize = [2000, 2000, 500];
     randomSeed = 51;
     environment = EnvironmentGenerator.generate( ...
         'BoxSize', boxSize, ...
@@ -25,6 +25,7 @@ function TestEnvironmentGenerator()
     errors = errors + validateZonePresence(environment);
     errors = errors + validateSpawnPoints(environment);
     errors = errors + validateTerrain(environment);
+    errors = errors + validateTreeZoneSpread(environment);
     errors = errors + validateApi(environment);
 
     fprintf('\nErrors: %d\n', errors);
@@ -174,6 +175,21 @@ function errors = validateTerrain(environment)
                 errors = errors + 1;
             end
         end
+    end
+end
+
+function errors = validateTreeZoneSpread(environment)
+    errors = 0;
+    if numel(environment.TreeZones) < 2
+        return;
+    end
+
+    centers = vertcat(environment.TreeZones.Center);
+    maxCenterRadius = max(vecnorm(centers, 2, 2));
+    minRadius = 0.30 * min(diff(environment.XLimits), diff(environment.YLimits));
+    if maxCenterRadius < minRadius
+        fprintf('ERROR: TreeZones are clustered near the origin.\n');
+        errors = errors + 1;
     end
 end
 

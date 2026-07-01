@@ -39,15 +39,13 @@ function PlotFlightMap(result, plotOptions)
     validLegend = isgraphics(legendHandles);
     legend(ax3d, [legendHandles(validLegend); boundsLegend], ...
         [legendLabels(validLegend); "Simulation bounds"], 'Location', 'eastoutside');
+    applyAxisLimits(ax3d, result, '3d');
     xlabel(ax3d, 'X, m');
     ylabel(ax3d, 'Y, m');
     zlabel(ax3d, 'Z, m');
     title(ax3d, '3D trajectories');
     view(ax3d, 3);
     axis(ax3d, 'vis3d');
-    if isfield(result, 'Config') && isfield(result.Config, 'BoxSize')
-        zlim(ax3d, [0, result.Config.BoxSize(3)]);
-    end
     hold(ax3d, 'off');
 
     axTop = nexttile;
@@ -59,12 +57,14 @@ function PlotFlightMap(result, plotOptions)
     ylabel(axTop, 'Y, m');
     title(axTop, 'Top view (X-Y)');
     axis(axTop, 'equal');
+    applyAxisLimits(axTop, result, 'xy');
     hold(axTop, 'off');
 
     axAlt = nexttile;
     hold(axAlt, 'on');
     grid(axAlt, 'on');
     plotTimeSeries(targets, timeAxis, typeColors, axAlt, 'altitude');
+    applyAxisLimits(axAlt, result, 'z');
     xlabel(axAlt, 'Time, s');
     ylabel(axAlt, 'Z, m');
     title(axAlt, 'Altitude vs time');
@@ -269,7 +269,7 @@ function drawRoadNetwork(roadNetwork, terrain, ax, mode)
 end
 
 function drawRadialZones(zones, ax, mode, color, ~)
-    theta = linspace(0, 2 * pi, 48);
+    theta = linspace(0, 2 * pi, 36);
     for zoneIdx = 1:numel(zones)
         zone = zones(zoneIdx);
         circleX = zone.Center(1) + zone.Radius * cos(theta);
@@ -277,9 +277,9 @@ function drawRadialZones(zones, ax, mode, color, ~)
         switch mode
             case 'plot3'
                 plot3(ax, circleX, circleY, zeros(size(circleX)), '--', ...
-                    'Color', color, 'LineWidth', 0.9);
+                    'Color', color, 'LineWidth', 0.7);
             case 'xy'
-                plot(ax, circleX, circleY, '--', 'Color', color, 'LineWidth', 0.9);
+                plot(ax, circleX, circleY, '--', 'Color', color, 'LineWidth', 0.7);
         end
     end
 end
@@ -302,22 +302,14 @@ function drawPatrolZones(patrolZones, terrain, ax, mode)
 end
 
 function drawSimulationBounds(result, ax)
-    if isfield(result, 'Statistics') && isfield(result.Statistics, 'Environment')
-        environment = result.Statistics.Environment;
-        xLimits = environment.XLimits;
-        yLimits = environment.YLimits;
-        zLimits = environment.ZLimits;
-    elseif isfield(result, 'Config') && isfield(result.Config, 'BoxSize')
-        halfXY = result.Config.BoxSize(1:2) / 2;
-        xLimits = [-halfXY(1), halfXY(1)];
-        yLimits = [-halfXY(2), halfXY(2)];
-        zLimits = [0, result.Config.BoxSize(3)];
-    else
+    bounds = resolveSimulationBounds(result);
+    if isempty(bounds)
         return;
     end
 
-    cornerX = [xLimits(1), xLimits(2), xLimits(2), xLimits(1), xLimits(1)];
-    cornerY = [yLimits(1), yLimits(1), yLimits(2), yLimits(2), yLimits(1)];
+    cornerX = [bounds.xMin, bounds.xMax, bounds.xMax, bounds.xMin, bounds.xMin];
+    cornerY = [bounds.yMin, bounds.yMin, bounds.yMax, bounds.yMax, bounds.yMin];
+    zLimits = [bounds.zMin, bounds.zMax];
 
     plot3(ax, cornerX, cornerY, repmat(zLimits(1), 1, 5), '--', 'Color', [0.4, 0.4, 0.4], 'LineWidth', 1.0);
     plot3(ax, cornerX, cornerY, repmat(zLimits(2), 1, 5), '--', 'Color', [0.4, 0.4, 0.4], 'LineWidth', 1.0);
@@ -325,5 +317,42 @@ function drawSimulationBounds(result, ax)
     for k = 1:4
         plot3(ax, [cornerX(k), cornerX(k)], [cornerY(k), cornerY(k)], zLimits, ...
             '--', 'Color', [0.4, 0.4, 0.4], 'LineWidth', 1.0);
+    end
+end
+
+function bounds = resolveSimulationBounds(result)
+    bounds = [];
+
+    if isfield(result, 'Config') && isfield(result.Config, 'BoxSize')
+        boxSize = result.Config.BoxSize;
+    else
+        return;
+    end
+
+    bounds = struct( ...
+        'xMin', -boxSize(1) / 2, ...
+        'xMax', boxSize(1) / 2, ...
+        'yMin', -boxSize(2) / 2, ...
+        'yMax', boxSize(2) / 2, ...
+        'zMin', 0, ...
+        'zMax', boxSize(3));
+end
+
+function applyAxisLimits(ax, result, mode)
+    bounds = resolveSimulationBounds(result);
+    if isempty(bounds)
+        return;
+    end
+
+    switch mode
+        case '3d'
+            xlim(ax, [bounds.xMin, bounds.xMax]);
+            ylim(ax, [bounds.yMin, bounds.yMax]);
+            zlim(ax, [bounds.zMin, bounds.zMax]);
+        case 'xy'
+            xlim(ax, [bounds.xMin, bounds.xMax]);
+            ylim(ax, [bounds.yMin, bounds.yMax]);
+        case 'z'
+            ylim(ax, [bounds.zMin, bounds.zMax]);
     end
 end

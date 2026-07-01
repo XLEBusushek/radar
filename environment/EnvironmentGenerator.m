@@ -46,7 +46,8 @@ classdef EnvironmentGenerator
                 xLimits, yLimits, args.MinAltitude, args.MaxAltitude, stream);
             environment.InspectionZones = EnvironmentGenerator.buildInspectionZones(xLimits, yLimits, stream);
             environment.NoFlyZones = EnvironmentGenerator.buildNoFlyZones();
-            environment.SpawnPoints = EnvironmentGenerator.buildSpawnPoints(environment, stream);
+            environment.SpawnPoints = EnvironmentGenerator.buildSpawnPoints( ...
+                environment, stream, args.RandomSeed);
         end
     end
 
@@ -151,7 +152,17 @@ classdef EnvironmentGenerator
                 'MaxAltitude', {});
         end
 
-        function spawnPoints = buildSpawnPoints(environment, stream)
+        function spawnPoints = buildSpawnPoints(environment, stream, randomSeed)
+            if nargin < 3
+                randomSeed = environment.RandomSeed;
+            end
+
+            areaScale = sqrt(diff(environment.XLimits) * diff(environment.YLimits)) / 1000;
+            targetGround = max(8, round(8 * areaScale));
+            targetBird = max(8, round(8 * areaScale));
+            targetAirplane = max(6, round(6 * areaScale));
+            targetQuad = max(8, round(8 * areaScale));
+
             spawnPoints = struct();
             spawnPoints.Ground = EnvironmentGenerator.spawnOnRoads(environment, 8, stream);
             spawnPoints.Bird = EnvironmentGenerator.spawnNearTreeZones(environment, 8, stream);
@@ -159,6 +170,37 @@ classdef EnvironmentGenerator
             spawnPoints.Airplane = EnvironmentGenerator.spawnInPatrolZones(environment, 6, stream);
             spawnPoints.AirplaneUAV = spawnPoints.Airplane;
             spawnPoints.Quadcopter = EnvironmentGenerator.spawnInInspectionZones(environment, 8, stream);
+
+            extraGround = targetGround - size(spawnPoints.Ground, 1);
+            extraBird = targetBird - size(spawnPoints.Bird, 1);
+            extraAirplane = targetAirplane - size(spawnPoints.Airplane, 1);
+            extraQuad = targetQuad - size(spawnPoints.Quadcopter, 1);
+
+            if extraGround > 0 || extraBird > 0 || extraAirplane > 0 || extraQuad > 0
+                supplementStream = RandStream('mt19937ar', 'Seed', round(randomSeed + 519));
+                if extraGround > 0
+                    spawnPoints.Ground = [
+                        spawnPoints.Ground
+                        EnvironmentGenerator.spawnOnRoads(environment, extraGround, supplementStream)];
+                end
+                if extraBird > 0
+                    extraBirdPoints = EnvironmentGenerator.spawnNearTreeZones( ...
+                        environment, extraBird, supplementStream);
+                    spawnPoints.Bird = [spawnPoints.Bird; extraBirdPoints];
+                    spawnPoints.False = spawnPoints.Bird;
+                end
+                if extraAirplane > 0
+                    extraAirplanePoints = EnvironmentGenerator.spawnInPatrolZones( ...
+                        environment, extraAirplane, supplementStream);
+                    spawnPoints.Airplane = [spawnPoints.Airplane; extraAirplanePoints];
+                    spawnPoints.AirplaneUAV = spawnPoints.Airplane;
+                end
+                if extraQuad > 0
+                    spawnPoints.Quadcopter = [
+                        spawnPoints.Quadcopter
+                        EnvironmentGenerator.spawnInInspectionZones(environment, extraQuad, supplementStream)];
+                end
+            end
         end
 
         function points = spawnOnRoads(environment, pointCount, stream)
