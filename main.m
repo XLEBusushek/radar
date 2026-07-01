@@ -51,20 +51,24 @@ if ~exist('numGround', 'var'), numGround = preset.NumGround; end
 if ~exist('numAirplaneUAV', 'var'), numAirplaneUAV = preset.NumAirplaneUAV; end
 if ~exist('numQuadcopter', 'var'), numQuadcopter = preset.NumQuadcopter; end
 if ~exist('boxSize', 'var'), boxSize = preset.BoxSize; end
+boxSize = boxSize(:)';
 if ~exist('outputPeriod', 'var'), outputPeriod = 5; end
 if ~exist('duration', 'var'), duration = preset.Duration; end
 if ~exist('dt', 'var'), dt = 1; end
 if ~exist('randomSeed', 'var'), randomSeed = 42; end
 
-config.NumFalse = numFalse;
-config.NumGround = numGround;
-config.NumAirplaneUAV = numAirplaneUAV;
-config.NumQuadcopter = numQuadcopter;
-config.BoxSize = boxSize;
-config.Duration = duration;
-config.Dt = dt;
-config.OutputPeriod = outputPeriod;
-config.RandomSeed = randomSeed;
+config = struct( ...
+    'NumFalse', numFalse, ...
+    'NumGround', numGround, ...
+    'NumAirplaneUAV', numAirplaneUAV, ...
+    'NumQuadcopter', numQuadcopter, ...
+    'BoxSize', boxSize, ...
+    'Duration', duration, ...
+    'Dt', dt, ...
+    'OutputPeriod', outputPeriod, ...
+    'RandomSeed', randomSeed);
+
+fprintf('Simulation area: %.0f x %.0f x %.0f m\n', config.BoxSize);
 
 engine = SimulationEngine();
 result = engine.run(config);
@@ -85,7 +89,6 @@ outputFrameCount = numel(outputs);
 
 fprintf('Simulation completed successfully.\n');
 fprintf('Demo mode: %s\n', modeKey);
-fprintf('Box size: [%.0f, %.0f, %.0f] m\n', boxSize(1), boxSize(2), boxSize(3));
 fprintf('Targets total: %d\n', totalTargets);
 fprintf('Output frames: %d\n', outputFrameCount);
 fprintf('CSV saved: %s\n', csvFilename);

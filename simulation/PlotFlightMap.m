@@ -39,13 +39,13 @@ function PlotFlightMap(result, plotOptions)
     validLegend = isgraphics(legendHandles);
     legend(ax3d, [legendHandles(validLegend); boundsLegend], ...
         [legendLabels(validLegend); "Simulation bounds"], 'Location', 'eastoutside');
-    applyAxisLimits(ax3d, result, '3d');
     xlabel(ax3d, 'X, m');
     ylabel(ax3d, 'Y, m');
     zlabel(ax3d, 'Z, m');
     title(ax3d, '3D trajectories');
     view(ax3d, 3);
     axis(ax3d, 'vis3d');
+    applyAxisLimits(ax3d, result, '3d');
     hold(ax3d, 'off');
 
     axTop = nexttile;
@@ -322,13 +322,19 @@ end
 
 function bounds = resolveSimulationBounds(result)
     bounds = [];
+    boxSize = [];
 
     if isfield(result, 'Config') && isfield(result.Config, 'BoxSize')
         boxSize = result.Config.BoxSize;
-    else
+    elseif isfield(result, 'Environment') && isfield(result.Environment, 'BoxSize')
+        boxSize = result.Environment.BoxSize;
+    end
+
+    if isempty(boxSize)
         return;
     end
 
+    boxSize = boxSize(:)';
     bounds = struct( ...
         'xMin', -boxSize(1) / 2, ...
         'xMax', boxSize(1) / 2, ...
@@ -349,10 +355,13 @@ function applyAxisLimits(ax, result, mode)
             xlim(ax, [bounds.xMin, bounds.xMax]);
             ylim(ax, [bounds.yMin, bounds.yMax]);
             zlim(ax, [bounds.zMin, bounds.zMax]);
+            set(ax, 'XLimMode', 'manual', 'YLimMode', 'manual', 'ZLimMode', 'manual');
         case 'xy'
             xlim(ax, [bounds.xMin, bounds.xMax]);
             ylim(ax, [bounds.yMin, bounds.yMax]);
+            set(ax, 'XLimMode', 'manual', 'YLimMode', 'manual');
         case 'z'
             ylim(ax, [bounds.zMin, bounds.zMax]);
+            set(ax, 'YLimMode', 'manual');
     end
 end

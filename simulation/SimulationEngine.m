@@ -10,6 +10,7 @@ classdef SimulationEngine
 
             startTime = tic;
             SimulationEngine.validateConfig(config);
+            config.BoxSize = config.BoxSize(:)';
 
             rng(config.RandomSeed);
             RadarTargetModel.resetIdCounter();

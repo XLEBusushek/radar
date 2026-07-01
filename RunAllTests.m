@@ -34,6 +34,7 @@ function RunAllTests()
         'Export / visualization', {
             'TestRadarOutputExporter', false
             'TestPhasedTargetAdapter', true
+            'TestBoxSizePropagation', false
             'TestSmallScenarioVisualLogic', false
             'TestMainScenario', false
         }
